@@ -17,5 +17,5 @@ resources:
       clusters:
         - label: default
           num_workers: ${var.num_workers}
-          node_type_id: Standard_DS3_v2
+          node_type_id: Standard_D4s_v3
       photon: true

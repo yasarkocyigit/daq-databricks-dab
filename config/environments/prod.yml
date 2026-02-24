@@ -18,7 +18,7 @@ environment:
 
   cluster:
     num_workers: 4
-    node_type_id: "Standard_DS4_v2"
+    node_type_id: "Standard_D4s_v3"
     spark_version: "18.0.x-scala2.13"
     autoscale:
       min_workers: 2

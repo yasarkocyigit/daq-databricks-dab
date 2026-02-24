@@ -18,7 +18,7 @@ environment:
 
   cluster:
     num_workers: 2
-    node_type_id: "Standard_DS3_v2"
+    node_type_id: "Standard_D4s_v3"
     spark_version: "18.0.x-scala2.13"
 
   overrides:
