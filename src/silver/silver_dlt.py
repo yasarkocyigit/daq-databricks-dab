@@ -13,7 +13,12 @@ from pyspark.sql import DataFrame
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+try:
+    _nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    _workspace_root = "/Workspace" + str(_nb_path).rsplit("/src/", 1)[0]
+    sys.path.insert(0, os.path.join(_workspace_root, "src"))
+except Exception:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath("."))), "src"))
 
 from framework.config_reader import ConfigReader
 from framework.quality_engine import apply_expectations
@@ -21,8 +26,12 @@ from framework.quality_engine import apply_expectations
 # COMMAND ----------
 
 environment = spark.conf.get("environment", "dev")
+catalog = spark.conf.get("catalog", "main")
 
 config = ConfigReader(environment)
+
+# Bronze tables live in a different schema - build fully qualified name
+bronze_schema = "bronze_raw"
 
 # COMMAND ----------
 
@@ -90,7 +99,7 @@ def apply_silver_transformations(df: DataFrame, table_cfg) -> DataFrame:
 def create_silver_scd1_table(table_cfg):
     """Create a Silver materialized view with SCD Type 1 (overwrite)."""
     expectations = apply_expectations(table_cfg)
-    bronze_name = f"bronze_{table_cfg.target_name}"
+    bronze_fqn = f"{catalog}.{bronze_schema}.bronze_{table_cfg.target_name}"
 
     @dp.materialized_view(
         name=table_cfg.target_name,
@@ -105,18 +114,24 @@ def create_silver_scd1_table(table_cfg):
     @dp.expect_all_or_drop(expectations["drop"])
     @dp.expect_all_or_fail(expectations["fail"])
     def silver_table():
-        df = spark.read.table(bronze_name)
+        df = spark.read.table(bronze_fqn)
         return apply_silver_transformations(df, table_cfg)
 
     return silver_table
 
 
 def create_silver_scd2_table(table_cfg):
-    """Create a Silver streaming table with SCD Type 2 (history tracking via create_auto_cdc_flow)."""
-    bronze_name = f"bronze_{table_cfg.target_name}"
-    sequence_col = table_cfg.watermark_column or "_ingestion_timestamp"
+    """Create a Silver materialized view with SCD Type 2 columns.
 
-    dp.create_streaming_table(
+    Since Bronze tables are materialized views (batch), we cannot use
+    create_auto_cdc_flow (requires streaming source). Instead we create
+    a materialized view with SCD2-style tracking columns.
+    When Bronze is changed to streaming tables, switch to create_auto_cdc_flow.
+    """
+    expectations = apply_expectations(table_cfg)
+    bronze_fqn = f"{catalog}.{bronze_schema}.bronze_{table_cfg.target_name}"
+
+    @dp.materialized_view(
         name=table_cfg.target_name,
         comment=f"Silver SCD2: {table_cfg.target_name}",
         table_properties={
@@ -124,20 +139,20 @@ def create_silver_scd2_table(table_cfg):
             "delta.enableChangeDataFeed": "true",
         },
     )
+    @dp.expect_all(expectations["warn"])
+    @dp.expect_all_or_drop(expectations["drop"])
+    @dp.expect_all_or_fail(expectations["fail"])
+    def silver_table():
+        df = spark.read.table(bronze_fqn)
+        return apply_silver_transformations(df, table_cfg)
 
-    dp.create_auto_cdc_flow(
-        target=table_cfg.target_name,
-        source=bronze_name,
-        keys=table_cfg.merge_keys,
-        sequence_by=col(sequence_col),
-        stored_as_scd_type=2,
-    )
+    return silver_table
 
 
 def create_silver_streaming_table(table_cfg):
     """Create a Silver streaming table (for stream-type sources)."""
     expectations = apply_expectations(table_cfg)
-    bronze_name = f"bronze_{table_cfg.target_name}"
+    bronze_fqn = f"{catalog}.{bronze_schema}.bronze_{table_cfg.target_name}"
 
     @dp.table(
         name=table_cfg.target_name,
@@ -151,7 +166,7 @@ def create_silver_streaming_table(table_cfg):
     @dp.expect_all_or_drop(expectations["drop"])
     @dp.expect_all_or_fail(expectations["fail"])
     def silver_stream():
-        df = spark.readStream.table(bronze_name)
+        df = spark.readStream.table(bronze_fqn)
         return apply_silver_transformations(df, table_cfg)
 
     return silver_stream

@@ -13,8 +13,14 @@ from pyspark.sql.functions import current_timestamp, lit
 import sys
 import os
 
-# Add framework to path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Add framework to path - in DLT notebooks __file__ is not available,
+# so we discover the bundle root from the notebook context
+try:
+    _nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    _workspace_root = "/Workspace" + str(_nb_path).rsplit("/src/", 1)[0]
+    sys.path.insert(0, os.path.join(_workspace_root, "src"))
+except Exception:
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath("."))), "src"))
 
 from framework.config_reader import ConfigReader
 from framework.source_connectors import SourceConnectorFactory

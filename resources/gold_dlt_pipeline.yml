@@ -2,7 +2,8 @@ resources:
   pipelines:
     gold_analytics:
       name: "MDI_Gold_Analytics_${var.environment}"
-      target: "${var.catalog}.${var.gold_schema}"
+      catalog: "${var.catalog}"
+      target: "${var.gold_schema}"
       libraries:
         - notebook:
             path: ../src/gold/gold_dlt.py
@@ -13,7 +14,7 @@ resources:
         silver_schema: ${var.silver_schema}
       channel: PREVIEW
       continuous: false
-      development: true
+      development: false
       clusters:
         - label: default
           num_workers: ${var.num_workers}

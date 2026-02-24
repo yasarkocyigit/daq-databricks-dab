@@ -2,7 +2,8 @@ resources:
   pipelines:
     silver_transform:
       name: "MDI_Silver_Transform_${var.environment}"
-      target: "${var.catalog}.${var.silver_schema}"
+      catalog: "${var.catalog}"
+      target: "${var.silver_schema}"
       libraries:
         - notebook:
             path: ../src/silver/silver_dlt.py
@@ -13,7 +14,7 @@ resources:
         secret_scope: ${var.secret_scope}
       channel: PREVIEW
       continuous: false
-      development: true
+      development: false
       clusters:
         - label: default
           num_workers: ${var.num_workers}

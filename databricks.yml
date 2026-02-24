@@ -38,8 +38,8 @@ targets:
     mode: development
     default: true
     variables:
-      catalog: dev_catalog
-      bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/dev/bronze"
+      catalog: daq_dev_dbx
+      bronze_storage_path: ""
       silver_schema: dev_silver
       gold_schema: dev_gold
       checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/dev/_checkpoints"

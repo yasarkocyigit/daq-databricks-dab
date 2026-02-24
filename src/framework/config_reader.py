@@ -11,6 +11,7 @@ Directory structure:
 """
 import yaml
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 
@@ -68,13 +69,29 @@ class ConfigReader:
         self._env_config = self._load_environment()
 
     def _detect_base_path(self) -> str:
-        """Auto-detect base path by looking for databricks.yml."""
-        current = os.path.dirname(os.path.abspath(__file__))
-        for _ in range(5):
-            if os.path.exists(os.path.join(current, "databricks.yml")):
-                return current
-            current = os.path.dirname(current)
-        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        """Auto-detect base path by looking for databricks.yml.
+
+        In Databricks workspace, __file__ points to the workspace filesystem.
+        We walk up from src/framework/ to find the project root.
+        """
+        # Try __file__ first (works in workspace filesystem)
+        try:
+            current = os.path.dirname(os.path.abspath(__file__))
+            for _ in range(5):
+                if os.path.exists(os.path.join(current, "config")):
+                    return current
+                current = os.path.dirname(current)
+        except NameError:
+            pass
+
+        # Fallback: try to find via sys.path entries
+        for p in sys.path:
+            candidate = os.path.dirname(p) if p.endswith("/src") else p
+            if os.path.exists(os.path.join(candidate, "config")):
+                return candidate
+
+        # Last resort
+        return os.getcwd()
 
     def _load_yaml(self, relative_path: str) -> dict:
         full_path = os.path.join(self.base_path, relative_path)

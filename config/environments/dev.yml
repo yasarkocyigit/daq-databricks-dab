@@ -1,17 +1,17 @@
 environment:
   name: dev
-  catalog: dev_catalog
+  catalog: daq_dev_dbx
 
   bronze:
     storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/dev/bronze"
     schema: dev_bronze
 
   silver:
-    catalog: dev_catalog
+    catalog: daq_dev_dbx
     schema: dev_silver
 
   gold:
-    catalog: dev_catalog
+    catalog: daq_dev_dbx
     schema: dev_gold
 
   checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/dev/_checkpoints"

@@ -2,7 +2,8 @@ resources:
   pipelines:
     bronze_ingestion:
       name: "MDI_Bronze_Ingestion_${var.environment}"
-      target: "${var.catalog}.bronze_raw"
+      catalog: "${var.catalog}"
+      target: "bronze_raw"
       libraries:
         - notebook:
             path: ../src/bronze/bronze_dlt.py
@@ -13,7 +14,7 @@ resources:
         checkpoint_base: ${var.checkpoint_base}
       channel: PREVIEW
       continuous: false
-      development: true
+      development: false
       clusters:
         - label: default
           num_workers: ${var.num_workers}
