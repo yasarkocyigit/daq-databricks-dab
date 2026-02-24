@@ -1,15 +1,16 @@
 table:
   source: adventureworks
+  database: AdventureWorks2022
   source_schema: Sales
-  source_table: CurrencyRate
-  target_name: currencyrate
+  source_table: Store
+  target_name: store
   enabled: true
-  execution_order: 15
+  execution_order: 10
 
   load:
     type: incremental
     watermark_column: ModifiedDate
-    primary_key: [CurrencyRateID]
+    primary_key: [BusinessEntityID]
     fetch_size: 5000
 
   schema_drift:
@@ -19,11 +20,11 @@ table:
 
   quality:
     expectations:
-      - name: "rate_id_not_null"
-        constraint: "CurrencyRateID IS NOT NULL"
+      - name: "store_id_not_null"
+        constraint: "BusinessEntityID IS NOT NULL"
         action: fail
-      - name: "valid_exchange_rate"
-        constraint: "AverageRate > 0 AND EndOfDayRate > 0"
+      - name: "valid_store_name"
+        constraint: "Name IS NOT NULL AND LENGTH(Name) > 0"
         action: warn
 
   silver:
@@ -31,5 +32,7 @@ table:
       - type: add_column
         name: source_system
         expression: "'AdventureWorks'"
+      - type: trim_strings
+        columns: all
     scd_type: 1
-    merge_keys: [CurrencyRateID]
+    merge_keys: [BusinessEntityID]

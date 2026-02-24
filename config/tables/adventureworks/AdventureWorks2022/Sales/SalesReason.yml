@@ -1,5 +1,6 @@
 table:
   source: adventureworks
+  database: AdventureWorks2022
   source_schema: Sales
   source_table: SalesReason
   target_name: salesreason

@@ -19,7 +19,7 @@ gold_model:
       MaxQty AS max_quantity,
       is_active,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.specialoffer
+    FROM specialoffer
 
   quality:
     expectations:

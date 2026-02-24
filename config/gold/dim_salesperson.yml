@@ -19,14 +19,14 @@ gold_model:
       q.latest_quota,
       q.latest_quota_date,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.salesperson sp
+    FROM salesperson sp
     LEFT JOIN (
       SELECT
         BusinessEntityID,
         SalesQuota AS latest_quota,
         QuotaDate AS latest_quota_date,
         ROW_NUMBER() OVER (PARTITION BY BusinessEntityID ORDER BY QuotaDate DESC) AS rn
-      FROM LIVE.salespersonquotahistory
+      FROM salespersonquotahistory
     ) q ON sp.BusinessEntityID = q.BusinessEntityID AND q.rn = 1
 
   quality:

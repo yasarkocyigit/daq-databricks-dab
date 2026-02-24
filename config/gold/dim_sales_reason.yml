@@ -12,7 +12,7 @@ gold_model:
       Name AS reason_name,
       ReasonType AS reason_type,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.salesreason
+    FROM salesreason
 
   quality:
     expectations:

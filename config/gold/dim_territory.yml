@@ -17,7 +17,7 @@ gold_model:
       CostYTD AS territory_cost_ytd,
       CostLastYear AS territory_cost_last_year,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.salesterritory
+    FROM salesterritory
 
   quality:
     expectations:

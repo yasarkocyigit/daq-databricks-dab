@@ -7,8 +7,8 @@ source:
     driver: "com.microsoft.sqlserver.jdbc.SQLServerDriver"
     host_secret_scope: "adls-secrets"
     host_secret_key: "sqlserver-host"
-    port: 1433
-    database: "AdventureWorks2019"
+    port: 12309
+    database: "AdventureWorks2022"
     username_secret_key: "sqlserver-username"
     password_secret_key: "sqlserver-password"
 

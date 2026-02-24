@@ -2,12 +2,12 @@
 # MAGIC %md
 # MAGIC # Silver Layer - Metadata-Driven Transformations
 # MAGIC
-# MAGIC Reads from Bronze DLT tables, applies transformations defined in YAML,
-# MAGIC handles SCD Type 1/2, and applies data quality expectations.
+# MAGIC Reads from Bronze tables, applies transformations defined in YAML,
+# MAGIC handles SCD Type 1/2 using Spark Declarative Pipelines (pyspark.pipelines).
 
 # COMMAND ----------
 
-import dlt
+from pyspark import pipelines as dp
 from pyspark.sql.functions import current_timestamp, lit, col, trim, expr, when
 from pyspark.sql import DataFrame
 import sys
@@ -88,11 +88,11 @@ def apply_silver_transformations(df: DataFrame, table_cfg) -> DataFrame:
 # COMMAND ----------
 
 def create_silver_scd1_table(table_cfg):
-    """Create a Silver DLT table with SCD Type 1 (overwrite)."""
+    """Create a Silver materialized view with SCD Type 1 (overwrite)."""
     expectations = apply_expectations(table_cfg)
     bronze_name = f"bronze_{table_cfg.target_name}"
 
-    @dlt.table(
+    @dp.materialized_view(
         name=table_cfg.target_name,
         comment=f"Silver cleansed: {table_cfg.target_name}",
         table_properties={
@@ -101,22 +101,22 @@ def create_silver_scd1_table(table_cfg):
             "pipelines.autoOptimize.managed": "true",
         },
     )
-    @dlt.expect_all(expectations["warn"])
-    @dlt.expect_all_or_drop(expectations["drop"])
-    @dlt.expect_all_or_fail(expectations["fail"])
+    @dp.expect_all(expectations["warn"])
+    @dp.expect_all_or_drop(expectations["drop"])
+    @dp.expect_all_or_fail(expectations["fail"])
     def silver_table():
-        df = dlt.read(bronze_name)
+        df = spark.read.table(bronze_name)
         return apply_silver_transformations(df, table_cfg)
 
     return silver_table
 
 
 def create_silver_scd2_table(table_cfg):
-    """Create a Silver DLT table with SCD Type 2 (history tracking via apply_changes)."""
+    """Create a Silver streaming table with SCD Type 2 (history tracking via create_auto_cdc_flow)."""
     bronze_name = f"bronze_{table_cfg.target_name}"
     sequence_col = table_cfg.watermark_column or "_ingestion_timestamp"
 
-    dlt.create_streaming_table(
+    dp.create_streaming_table(
         name=table_cfg.target_name,
         comment=f"Silver SCD2: {table_cfg.target_name}",
         table_properties={
@@ -125,7 +125,7 @@ def create_silver_scd2_table(table_cfg):
         },
     )
 
-    dlt.apply_changes(
+    dp.create_auto_cdc_flow(
         target=table_cfg.target_name,
         source=bronze_name,
         keys=table_cfg.merge_keys,
@@ -139,7 +139,7 @@ def create_silver_streaming_table(table_cfg):
     expectations = apply_expectations(table_cfg)
     bronze_name = f"bronze_{table_cfg.target_name}"
 
-    @dlt.table(
+    @dp.table(
         name=table_cfg.target_name,
         comment=f"Silver streaming: {table_cfg.target_name}",
         table_properties={
@@ -147,11 +147,11 @@ def create_silver_streaming_table(table_cfg):
             "delta.enableChangeDataFeed": "true",
         },
     )
-    @dlt.expect_all(expectations["warn"])
-    @dlt.expect_all_or_drop(expectations["drop"])
-    @dlt.expect_all_or_fail(expectations["fail"])
+    @dp.expect_all(expectations["warn"])
+    @dp.expect_all_or_drop(expectations["drop"])
+    @dp.expect_all_or_fail(expectations["fail"])
     def silver_stream():
-        df = dlt.readStream(bronze_name)
+        df = spark.readStream.table(bronze_name)
         return apply_silver_transformations(df, table_cfg)
 
     return silver_stream

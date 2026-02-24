@@ -29,8 +29,8 @@ gold_model:
       (d.UnitPrice * d.OrderQty) AS gross_amount,
       (d.UnitPrice * d.OrderQty * d.UnitPriceDiscount) AS discount_amount,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.salesorderdetail d
-    INNER JOIN LIVE.salesorderheader h ON d.SalesOrderID = h.SalesOrderID
+    FROM salesorderdetail d
+    INNER JOIN salesorderheader h ON d.SalesOrderID = h.SalesOrderID
 
   quality:
     expectations:

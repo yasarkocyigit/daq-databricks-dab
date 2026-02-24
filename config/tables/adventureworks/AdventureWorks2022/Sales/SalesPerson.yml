@@ -1,29 +1,29 @@
 table:
   source: adventureworks
+  database: AdventureWorks2022
   source_schema: Sales
-  source_table: Store
-  target_name: store
+  source_table: SalesPerson
+  target_name: salesperson
   enabled: true
   execution_order: 10
 
   load:
-    type: incremental
-    watermark_column: ModifiedDate
+    type: full
     primary_key: [BusinessEntityID]
     fetch_size: 5000
 
   schema_drift:
-    mode: auto_evolve
+    mode: strict
     alert_on_drift: true
     allowed_changes: [add_column]
 
   quality:
     expectations:
-      - name: "store_id_not_null"
+      - name: "person_id_not_null"
         constraint: "BusinessEntityID IS NOT NULL"
         action: fail
-      - name: "valid_store_name"
-        constraint: "Name IS NOT NULL AND LENGTH(Name) > 0"
+      - name: "valid_territory"
+        constraint: "TerritoryID IS NOT NULL"
         action: warn
 
   silver:
@@ -33,5 +33,5 @@ table:
         expression: "'AdventureWorks'"
       - type: trim_strings
         columns: all
-    scd_type: 1
+    scd_type: 2
     merge_keys: [BusinessEntityID]

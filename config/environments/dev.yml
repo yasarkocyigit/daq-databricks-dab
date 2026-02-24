@@ -19,7 +19,7 @@ environment:
   cluster:
     num_workers: 1
     node_type_id: "Standard_DS3_v2"
-    spark_version: "14.3.x-scala2.12"
+    spark_version: "18.0.x-scala2.13"
 
   overrides:
     default_quality_action: warn

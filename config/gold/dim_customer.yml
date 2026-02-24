@@ -17,8 +17,8 @@ gold_model:
       c.AccountNumber,
       c.customer_type,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.customer c
-    LEFT JOIN LIVE.store s ON c.StoreID = s.BusinessEntityID
+    FROM customer c
+    LEFT JOIN store s ON c.StoreID = s.BusinessEntityID
 
   quality:
     expectations:

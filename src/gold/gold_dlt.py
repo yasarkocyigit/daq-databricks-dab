@@ -2,12 +2,13 @@
 # MAGIC %md
 # MAGIC # Gold Layer - Star Schema Models
 # MAGIC
-# MAGIC Creates Gold dimension and fact tables from YAML model definitions.
+# MAGIC Creates Gold dimension and fact tables from YAML model definitions
+# MAGIC using Spark Declarative Pipelines (pyspark.pipelines).
 # MAGIC dim_date is auto-generated; all others are defined in config/gold/*.yml
 
 # COMMAND ----------
 
-import dlt
+from pyspark import pipelines as dp
 from pyspark.sql.functions import current_timestamp
 import sys
 import os
@@ -30,7 +31,7 @@ config = ConfigReader(environment)
 
 # COMMAND ----------
 
-@dlt.table(
+@dp.materialized_view(
     name="dim_date",
     comment="Date dimension - auto-generated (2010-2030)",
     table_properties={"quality": "gold"},
@@ -70,20 +71,19 @@ def dim_date():
 # COMMAND ----------
 
 def create_gold_model(model_cfg):
-    """Create a Gold DLT table from a YAML model definition."""
+    """Create a Gold materialized view from a YAML model definition."""
     expectations = apply_expectations_from_raw(
         model_cfg.get("quality", {}).get("expectations", [])
     )
-    model_type = model_cfg.get("type", "materialized_view")
 
-    @dlt.table(
+    @dp.materialized_view(
         name=model_cfg["name"],
         comment=model_cfg.get("description", ""),
         table_properties={"quality": "gold"},
     )
-    @dlt.expect_all(expectations["warn"])
-    @dlt.expect_all_or_drop(expectations["drop"])
-    @dlt.expect_all_or_fail(expectations["fail"])
+    @dp.expect_all(expectations["warn"])
+    @dp.expect_all_or_drop(expectations["drop"])
+    @dp.expect_all_or_fail(expectations["fail"])
     def gold_table():
         return spark.sql(model_cfg["sql"])
 
@@ -99,4 +99,4 @@ print(f"[Gold] Loading {len(gold_models)} models from config (env: {environment}
 for model_cfg in gold_models:
     if model_cfg["name"] != "dim_date":  # dim_date handled above
         create_gold_model(model_cfg)
-        print(f"  [{model_cfg.get('type', 'materialized_view').upper()}] {model_cfg['name']}")
+        print(f"  [MATERIALIZED_VIEW] {model_cfg['name']}")

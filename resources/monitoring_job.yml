@@ -18,6 +18,6 @@ resources:
               checkpoint_base: ${var.checkpoint_base}
           new_cluster:
             num_workers: 1
-            spark_version: "14.3.x-scala2.12"
+            spark_version: "18.0.x-scala2.13"
             node_type_id: Standard_DS3_v2
           timeout_seconds: 1800

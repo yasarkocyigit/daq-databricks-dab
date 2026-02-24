@@ -1,6 +1,8 @@
 """
 Source connector factory: returns a Spark DataFrame (batch or streaming)
 based on the source type and table configuration from YAML.
+
+Supports: JDBC (SQL Server), Event Hub, Kafka, CDC (Debezium), Auto Loader.
 """
 from .config_reader import ConfigReader, TableConfig
 
@@ -22,7 +24,6 @@ class SourceConnectorFactory:
             return self._get_batch_df(table_config, source_cfg)
 
     def _get_batch_df(self, table_config: TableConfig, source_cfg: dict):
-        """Route to the correct batch reader."""
         source_type = source_cfg["type"]
         if source_type == "jdbc":
             return self._read_jdbc(table_config, source_cfg)
@@ -32,7 +33,6 @@ class SourceConnectorFactory:
             raise ValueError(f"Unsupported batch source type: {source_type}")
 
     def _get_streaming_df(self, table_config: TableConfig, source_cfg: dict):
-        """Route to the correct streaming reader."""
         stream_type = table_config.stream_config.source_type
         if stream_type == "autoloader":
             return self._read_autoloader_stream(table_config, source_cfg)
@@ -45,26 +45,27 @@ class SourceConnectorFactory:
         else:
             raise ValueError(f"Unsupported stream type: {stream_type}")
 
-    # ── JDBC (SQL Server primary) ──────────────────────────────────────
+    # -- JDBC (SQL Server primary) --
 
     def _read_jdbc(self, table_config: TableConfig, source_cfg: dict):
         """Read from JDBC source with full or incremental load support."""
         conn = source_cfg["connection"]
         scope = conn["host_secret_scope"]
 
-        # Resolve secrets
         dbutils = self._get_dbutils()
         host = dbutils.secrets.get(scope=scope, key=conn["host_secret_key"])
         user = dbutils.secrets.get(scope=scope, key=conn["username_secret_key"])
         password = dbutils.secrets.get(scope=scope, key=conn["password_secret_key"])
 
+        # Use database from table config if available, fallback to source config
+        database = table_config.database or conn["database"]
+
         jdbc_url = (
             f"jdbc:sqlserver://{host}:{conn.get('port', 1433)};"
-            f"database={conn['database']};"
+            f"database={database};"
             f"encrypt=true;trustServerCertificate=true"
         )
 
-        # Build query
         query = (
             f"SELECT * FROM [{table_config.source_schema}]"
             f".[{table_config.source_table}]"
@@ -98,16 +99,14 @@ class SourceConnectorFactory:
             .option("fetchsize", str(table_config.fetch_size))
         )
 
-        # Additional JDBC options from config
         for k, v in conn.get("jdbc_options", {}).items():
             reader = reader.option(k, str(v))
 
         return reader.load()
 
-    # ── Auto Loader ────────────────────────────────────────────────────
+    # -- Auto Loader --
 
     def _read_autoloader_batch(self, table_config: TableConfig, source_cfg: dict):
-        """Read files as a batch using Auto Loader format."""
         al_cfg = source_cfg.get("autoloader", {})
         return (
             self.spark.read.format(al_cfg.get("format", "parquet"))
@@ -115,7 +114,6 @@ class SourceConnectorFactory:
         )
 
     def _read_autoloader_stream(self, table_config: TableConfig, source_cfg: dict):
-        """Read using Auto Loader (cloudFiles) for streaming."""
         al_cfg = source_cfg.get("autoloader", {})
         schema_evolution = (
             "addNewColumns"
@@ -132,10 +130,9 @@ class SourceConnectorFactory:
             .load(al_cfg["path"])
         )
 
-    # ── Event Hub ──────────────────────────────────────────────────────
+    # -- Event Hub --
 
     def _read_eventhub(self, table_config: TableConfig, source_cfg: dict):
-        """Read from Azure Event Hub."""
         eh_cfg = source_cfg["eventhub"]
         scope = source_cfg["connection"]["host_secret_scope"]
         dbutils = self._get_dbutils()
@@ -144,7 +141,6 @@ class SourceConnectorFactory:
             scope=scope, key=eh_cfg["connection_string_secret_key"]
         )
 
-        # Encrypt connection string for Event Hubs connector
         encrypted = self.spark._jvm.org.apache.spark.eventhubs.EventHubsUtils.encrypt(
             conn_str
         )
@@ -169,10 +165,9 @@ class SourceConnectorFactory:
 
         return self.spark.readStream.format("eventhubs").options(**eh_conf).load()
 
-    # ── Kafka ──────────────────────────────────────────────────────────
+    # -- Kafka --
 
     def _read_kafka(self, table_config: TableConfig, source_cfg: dict):
-        """Read from Apache Kafka."""
         k_cfg = source_cfg["kafka"]
         scope = source_cfg["connection"]["host_secret_scope"]
         dbutils = self._get_dbutils()
@@ -193,7 +188,6 @@ class SourceConnectorFactory:
                 "kafka.security.protocol", k_cfg["security_protocol"]
             )
 
-        # SASL authentication
         if k_cfg.get("sasl_mechanism"):
             sasl_user = dbutils.secrets.get(
                 scope=scope, key=k_cfg["sasl_username_secret_key"]
@@ -218,18 +212,15 @@ class SourceConnectorFactory:
 
         return reader.load()
 
-    # ── CDC (via Kafka Connect / Debezium) ─────────────────────────────
+    # -- CDC (via Kafka Connect / Debezium) --
 
     def _read_cdc(self, table_config: TableConfig, source_cfg: dict):
-        """Read CDC changes via Kafka (Debezium topic naming convention)."""
         k_cfg = source_cfg.get("kafka", source_cfg.get("cdc", {}))
 
-        # Debezium default topic: {connector}.{schema}.{table}
         topic = k_cfg.get("topic") or (
             f"dbserver1.{table_config.source_schema}.{table_config.source_table}"
         )
 
-        # Create a modified source config with the CDC topic
         source_cfg_copy = dict(source_cfg)
         if "kafka" not in source_cfg_copy:
             source_cfg_copy["kafka"] = dict(k_cfg)
@@ -239,14 +230,12 @@ class SourceConnectorFactory:
 
         return self._read_kafka(table_config, source_cfg_copy)
 
-    # ── Utilities ──────────────────────────────────────────────────────
+    # -- Utilities --
 
     def _get_dbutils(self):
-        """Get dbutils from the Spark session (Databricks runtime only)."""
         try:
             from pyspark.dbutils import DBUtils
             return DBUtils(self.spark)
         except ImportError:
-            # Fallback for Databricks notebook context
             import IPython
             return IPython.get_ipython().user_ns.get("dbutils")

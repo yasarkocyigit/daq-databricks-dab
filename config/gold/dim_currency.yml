@@ -15,7 +15,7 @@ gold_model:
       cr.latest_end_of_day_rate,
       cr.latest_rate_date,
       current_timestamp() AS etl_timestamp
-    FROM LIVE.currency c
+    FROM currency c
     LEFT JOIN (
       SELECT
         ToCurrencyCode,
@@ -23,7 +23,7 @@ gold_model:
         EndOfDayRate AS latest_end_of_day_rate,
         CurrencyRateDate AS latest_rate_date,
         ROW_NUMBER() OVER (PARTITION BY ToCurrencyCode ORDER BY CurrencyRateDate DESC) AS rn
-      FROM LIVE.currencyrate
+      FROM currencyrate
     ) cr ON c.CurrencyCode = cr.ToCurrencyCode AND cr.rn = 1
 
   quality:

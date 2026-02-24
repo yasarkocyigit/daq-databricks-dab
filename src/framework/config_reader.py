@@ -1,7 +1,13 @@
 """
 Config reader module: loads YAML configs, validates against schema,
 merges environment overrides, and provides structured config objects
-to DLT notebooks.
+to Spark Declarative Pipeline notebooks.
+
+Directory structure:
+  config/tables/{source}/{database}/{schema}/{Table}.yml
+  config/sources/{source}.yml
+  config/gold/{model}.yml
+  config/environments/{env}.yml
 """
 import yaml
 import os
@@ -35,6 +41,7 @@ class SchemaDriftConfig:
 @dataclass
 class TableConfig:
     source_name: str
+    database: str
     source_schema: str
     source_table: str
     target_name: str
@@ -56,11 +63,6 @@ class ConfigReader:
     """Reads and parses YAML configuration files for the ingestion framework."""
 
     def __init__(self, environment: str, base_path: Optional[str] = None):
-        """
-        Args:
-            environment: Target environment name (dev, staging, prod)
-            base_path: Root path of the bundle project. If None, auto-detected.
-        """
         self.environment = environment
         self.base_path = base_path or self._detect_base_path()
         self._env_config = self._load_environment()
@@ -68,7 +70,6 @@ class ConfigReader:
     def _detect_base_path(self) -> str:
         """Auto-detect base path by looking for databricks.yml."""
         current = os.path.dirname(os.path.abspath(__file__))
-        # Walk up from src/framework/ to project root
         for _ in range(5):
             if os.path.exists(os.path.join(current, "databricks.yml")):
                 return current
@@ -76,21 +77,21 @@ class ConfigReader:
         return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     def _load_yaml(self, relative_path: str) -> dict:
-        """Load a YAML file from the project."""
         full_path = os.path.join(self.base_path, relative_path)
         with open(full_path, "r") as f:
             return yaml.safe_load(f)
 
     def _load_environment(self) -> dict:
-        """Load environment-specific configuration."""
         return self._load_yaml(f"config/environments/{self.environment}.yml")
 
     def get_source_config(self, source_name: str) -> dict:
-        """Load a source system configuration."""
         return self._load_yaml(f"config/sources/{source_name}.yml")["source"]
 
     def get_all_table_configs(self) -> List[TableConfig]:
-        """Load all enabled table configs, sorted by execution_order."""
+        """Load all enabled table configs from nested directory structure.
+
+        Traverses: config/tables/{source}/{database}/{schema}/{Table}.yml
+        """
         tables = []
         tables_dir = os.path.join(self.base_path, "config", "tables")
 
@@ -99,24 +100,27 @@ class ConfigReader:
             if not os.path.isdir(source_path):
                 continue
 
-            for table_file in sorted(os.listdir(source_path)):
-                if table_file.startswith("_") or not table_file.endswith(".yml"):
-                    continue
+            for root, dirs, files in os.walk(source_path):
+                dirs.sort()
+                for table_file in sorted(files):
+                    if table_file.startswith("_") or not table_file.endswith(".yml"):
+                        continue
 
-                config = self._load_yaml(f"config/tables/{source_dir}/{table_file}")
-                table_cfg = self._parse_table_config(config["table"])
-                if table_cfg.enabled:
-                    tables.append(table_cfg)
+                    rel_path = os.path.relpath(
+                        os.path.join(root, table_file), self.base_path
+                    )
+                    config = self._load_yaml(rel_path)
+                    table_cfg = self._parse_table_config(config["table"])
+                    if table_cfg.enabled:
+                        tables.append(table_cfg)
 
         tables.sort(key=lambda t: t.execution_order)
         return tables
 
     def get_tables_by_load_type(self, load_type: str) -> List[TableConfig]:
-        """Get tables filtered by load type (full, incremental, stream)."""
         return [t for t in self.get_all_table_configs() if t.load_type == load_type]
 
     def get_gold_models(self) -> List[dict]:
-        """Load all Gold model definitions."""
         models = []
         gold_dir = os.path.join(self.base_path, "config", "gold")
 
@@ -128,10 +132,6 @@ class ConfigReader:
         return models
 
     def get_env_value(self, *keys, default=None):
-        """Get a nested value from the environment config.
-
-        Example: get_env_value("bronze", "storage_path")
-        """
         env = self._env_config.get("environment", {})
         for key in keys:
             if isinstance(env, dict):
@@ -141,21 +141,18 @@ class ConfigReader:
         return env if env is not None else default
 
     def _parse_table_config(self, raw: dict) -> TableConfig:
-        """Parse raw YAML dict into a strongly-typed TableConfig."""
         load = raw.get("load", {})
         drift = raw.get("schema_drift", {})
         quality = raw.get("quality", {})
         silver = raw.get("silver", {})
         stream_raw = load.get("stream")
 
-        # Parse stream config
         stream_config = None
         if stream_raw:
             checkpoint_base = self.get_env_value("checkpoint_base", default="")
             checkpoint = stream_raw["checkpoint_location"].replace(
                 "__CHECKPOINT_BASE__", checkpoint_base
             )
-            # Apply environment override for trigger interval
             env_trigger = self.get_env_value(
                 "overrides", "streaming_trigger_interval"
             )
@@ -167,7 +164,6 @@ class ConfigReader:
                 max_offsets_per_trigger=stream_raw.get("max_offsets_per_trigger"),
             )
 
-        # Parse quality expectations with env override
         expectations = []
         env_quality_override = self.get_env_value("overrides", "default_quality_action")
         for exp in quality.get("expectations", []):
@@ -182,6 +178,7 @@ class ConfigReader:
 
         return TableConfig(
             source_name=raw["source"],
+            database=raw.get("database", ""),
             source_schema=raw["source_schema"],
             source_table=raw["source_table"],
             target_name=raw["target_name"],
