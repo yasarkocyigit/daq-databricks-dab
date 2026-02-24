@@ -1,0 +1,33 @@
+gold_model:
+  name: dim_currency
+  type: materialized_view
+  description: "Currency dimension with exchange rates"
+
+  source_tables:
+    - silver.currency
+    - silver.currencyrate
+
+  sql: |
+    SELECT
+      c.CurrencyCode AS currency_key,
+      c.Name AS currency_name,
+      cr.latest_avg_rate,
+      cr.latest_end_of_day_rate,
+      cr.latest_rate_date,
+      current_timestamp() AS etl_timestamp
+    FROM LIVE.currency c
+    LEFT JOIN (
+      SELECT
+        ToCurrencyCode,
+        AverageRate AS latest_avg_rate,
+        EndOfDayRate AS latest_end_of_day_rate,
+        CurrencyRateDate AS latest_rate_date,
+        ROW_NUMBER() OVER (PARTITION BY ToCurrencyCode ORDER BY CurrencyRateDate DESC) AS rn
+      FROM LIVE.currencyrate
+    ) cr ON c.CurrencyCode = cr.ToCurrencyCode AND cr.rn = 1
+
+  quality:
+    expectations:
+      - name: "currency_key_not_null"
+        constraint: "currency_key IS NOT NULL"
+        action: fail

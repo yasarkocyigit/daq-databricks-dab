@@ -1,0 +1,29 @@
+environment:
+  name: prod
+  catalog: main
+
+  bronze:
+    storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
+    schema: bronze_raw
+
+  silver:
+    catalog: main
+    schema: silver_data
+
+  gold:
+    catalog: main
+    schema: gold_analytics
+
+  checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
+
+  cluster:
+    num_workers: 4
+    node_type_id: "Standard_DS4_v2"
+    spark_version: "14.3.x-scala2.12"
+    autoscale:
+      min_workers: 2
+      max_workers: 8
+
+  overrides:
+    default_quality_action: fail
+    streaming_trigger_interval: "10 seconds"

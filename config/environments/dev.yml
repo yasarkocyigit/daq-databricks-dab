@@ -1,0 +1,26 @@
+environment:
+  name: dev
+  catalog: dev_catalog
+
+  bronze:
+    storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/dev/bronze"
+    schema: dev_bronze
+
+  silver:
+    catalog: dev_catalog
+    schema: dev_silver
+
+  gold:
+    catalog: dev_catalog
+    schema: dev_gold
+
+  checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/dev/_checkpoints"
+
+  cluster:
+    num_workers: 1
+    node_type_id: "Standard_DS3_v2"
+    spark_version: "14.3.x-scala2.12"
+
+  overrides:
+    default_quality_action: warn
+    streaming_trigger_interval: "60 seconds"

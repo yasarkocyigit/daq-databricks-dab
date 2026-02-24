@@ -1,0 +1,33 @@
+table:
+  source: adventureworks
+  source_schema: Sales
+  source_table: Currency
+  target_name: currency
+  enabled: true
+  execution_order: 5
+
+  load:
+    type: full
+    primary_key: [CurrencyCode]
+    fetch_size: 1000
+
+  schema_drift:
+    mode: strict
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "currency_code_not_null"
+        constraint: "CurrencyCode IS NOT NULL"
+        action: fail
+      - name: "valid_currency_name"
+        constraint: "Name IS NOT NULL"
+        action: warn
+
+  silver:
+    transformations:
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [CurrencyCode]

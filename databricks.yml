@@ -1,0 +1,70 @@
+bundle:
+  name: metadata-driven-ingestion
+
+workspace:
+  host: https://adb-4065910446400991.11.azuredatabricks.net
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: main
+  bronze_storage_path:
+    description: "ADLS path for Bronze external tables"
+    default: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
+  silver_schema:
+    description: "Silver schema name"
+    default: silver_data
+  gold_schema:
+    description: "Gold schema name"
+    default: gold_analytics
+  checkpoint_base:
+    description: "Base path for streaming checkpoints"
+    default: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
+  secret_scope:
+    description: "Databricks secret scope name"
+    default: adls-secrets
+  environment:
+    description: "Target environment name"
+    default: dev
+  num_workers:
+    description: "Default number of cluster workers"
+    default: 2
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      catalog: dev_catalog
+      bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/dev/bronze"
+      silver_schema: dev_silver
+      gold_schema: dev_gold
+      checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/dev/_checkpoints"
+      environment: dev
+      num_workers: 1
+
+  staging:
+    variables:
+      catalog: staging_catalog
+      bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/staging/bronze"
+      silver_schema: staging_silver
+      gold_schema: staging_gold
+      checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/staging/_checkpoints"
+      environment: staging
+      num_workers: 2
+
+  prod:
+    mode: production
+    variables:
+      catalog: main
+      bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
+      silver_schema: silver_data
+      gold_schema: gold_analytics
+      checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
+      environment: prod
+      num_workers: 4
+    run_as:
+      user_name: yasarkocyigit@daqconsulting.com

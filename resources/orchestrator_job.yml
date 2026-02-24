@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    orchestrator:
+      name: "MDI_Orchestrator_${var.environment}"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "America/New_York"
+      email_notifications:
+        on_failure:
+          - yasarkocyigit@daqconsulting.com
+      tasks:
+        - task_key: bronze_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.bronze_ingestion.id}
+            full_refresh: false
+          timeout_seconds: 7200
+
+        - task_key: silver_transform
+          depends_on:
+            - task_key: bronze_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_transform.id}
+            full_refresh: false
+          timeout_seconds: 3600
+
+        - task_key: gold_analytics
+          depends_on:
+            - task_key: silver_transform
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_analytics.id}
+            full_refresh: false
+          timeout_seconds: 3600

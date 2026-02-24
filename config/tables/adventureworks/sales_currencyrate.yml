@@ -1,0 +1,35 @@
+table:
+  source: adventureworks
+  source_schema: Sales
+  source_table: CurrencyRate
+  target_name: currencyrate
+  enabled: true
+  execution_order: 15
+
+  load:
+    type: incremental
+    watermark_column: ModifiedDate
+    primary_key: [CurrencyRateID]
+    fetch_size: 5000
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "rate_id_not_null"
+        constraint: "CurrencyRateID IS NOT NULL"
+        action: fail
+      - name: "valid_exchange_rate"
+        constraint: "AverageRate > 0 AND EndOfDayRate > 0"
+        action: warn
+
+  silver:
+    transformations:
+      - type: add_column
+        name: source_system
+        expression: "'AdventureWorks'"
+    scd_type: 1
+    merge_keys: [CurrencyRateID]

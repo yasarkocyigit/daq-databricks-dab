@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    monitoring:
+      name: "MDI_Monitoring_${var.environment}"
+      schedule:
+        quartz_cron_expression: "0 */30 * * * ?"
+        timezone_id: "America/New_York"
+      email_notifications:
+        on_failure:
+          - yasarkocyigit@daqconsulting.com
+      tasks:
+        - task_key: health_check
+          notebook_task:
+            notebook_path: ../src/utils/health_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+              environment: ${var.environment}
+              checkpoint_base: ${var.checkpoint_base}
+          new_cluster:
+            num_workers: 1
+            spark_version: "14.3.x-scala2.12"
+            node_type_id: Standard_DS3_v2
+          timeout_seconds: 1800

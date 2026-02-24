@@ -1,0 +1,26 @@
+environment:
+  name: staging
+  catalog: staging_catalog
+
+  bronze:
+    storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/staging/bronze"
+    schema: staging_bronze
+
+  silver:
+    catalog: staging_catalog
+    schema: staging_silver
+
+  gold:
+    catalog: staging_catalog
+    schema: staging_gold
+
+  checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/staging/_checkpoints"
+
+  cluster:
+    num_workers: 2
+    node_type_id: "Standard_DS3_v2"
+    spark_version: "14.3.x-scala2.12"
+
+  overrides:
+    default_quality_action: warn
+    streaming_trigger_interval: "30 seconds"

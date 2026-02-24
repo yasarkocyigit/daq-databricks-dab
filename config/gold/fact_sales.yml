@@ -1,0 +1,45 @@
+gold_model:
+  name: fact_sales
+  type: materialized_view
+  description: "Sales transactions at order line level"
+
+  source_tables:
+    - silver.salesorderheader
+    - silver.salesorderdetail
+    - silver.salesorderheadersalesreason
+
+  sql: |
+    SELECT
+      d.SalesOrderDetailID AS sales_key,
+      d.SalesOrderID AS order_id,
+      h.CustomerID AS customer_key,
+      h.SalesPersonID AS salesperson_key,
+      h.TerritoryID AS territory_key,
+      d.SpecialOfferID AS promotion_key,
+      CAST(h.OrderDate AS DATE) AS order_date_key,
+      CAST(h.ShipDate AS DATE) AS ship_date_key,
+      d.OrderQty AS quantity,
+      d.UnitPrice AS unit_price,
+      d.UnitPriceDiscount AS unit_discount,
+      d.LineTotal AS line_total,
+      h.SubTotal AS order_subtotal,
+      h.TaxAmt AS tax_amount,
+      h.Freight AS freight,
+      h.TotalDue AS order_total,
+      (d.UnitPrice * d.OrderQty) AS gross_amount,
+      (d.UnitPrice * d.OrderQty * d.UnitPriceDiscount) AS discount_amount,
+      current_timestamp() AS etl_timestamp
+    FROM LIVE.salesorderdetail d
+    INNER JOIN LIVE.salesorderheader h ON d.SalesOrderID = h.SalesOrderID
+
+  quality:
+    expectations:
+      - name: "valid_quantity"
+        constraint: "quantity > 0"
+        action: warn
+      - name: "valid_line_total"
+        constraint: "line_total >= 0"
+        action: warn
+      - name: "valid_order_total"
+        constraint: "order_total >= 0"
+        action: warn

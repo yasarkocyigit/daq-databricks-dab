@@ -1,0 +1,24 @@
+resources:
+  pipelines:
+    bronze_ingestion:
+      name: "MDI_Bronze_Ingestion_${var.environment}"
+      target: "${var.catalog}.bronze_raw"
+      libraries:
+        - notebook:
+            path: ../src/bronze/bronze_dlt.py
+      configuration:
+        environment: ${var.environment}
+        bronze_storage_path: ${var.bronze_storage_path}
+        secret_scope: ${var.secret_scope}
+        checkpoint_base: ${var.checkpoint_base}
+      channel: PREVIEW
+      continuous: false
+      development: true
+      clusters:
+        - label: default
+          num_workers: ${var.num_workers}
+          node_type_id: Standard_DS3_v2
+          spark_conf:
+            spark.sql.adaptive.enabled: "true"
+            spark.databricks.delta.schema.autoMerge.enabled: "true"
+      photon: true

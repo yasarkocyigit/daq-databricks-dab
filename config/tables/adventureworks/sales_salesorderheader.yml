@@ -1,0 +1,53 @@
+table:
+  source: adventureworks
+  source_schema: Sales
+  source_table: SalesOrderHeader
+  target_name: salesorderheader
+  enabled: true
+  execution_order: 20
+
+  load:
+    type: incremental
+    watermark_column: ModifiedDate
+    primary_key: [SalesOrderID]
+    fetch_size: 10000
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "order_id_not_null"
+        constraint: "SalesOrderID IS NOT NULL"
+        action: fail
+      - name: "valid_order_date"
+        constraint: "OrderDate IS NOT NULL"
+        action: fail
+      - name: "valid_total_due"
+        constraint: "TotalDue >= 0"
+        action: warn
+      - name: "valid_customer_ref"
+        constraint: "CustomerID IS NOT NULL"
+        action: fail
+
+  silver:
+    transformations:
+      - type: add_column
+        name: order_year
+        expression: "YEAR(OrderDate)"
+      - type: add_column
+        name: order_month
+        expression: "MONTH(OrderDate)"
+      - type: add_column
+        name: source_system
+        expression: "'AdventureWorks'"
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [SalesOrderID]
+
+  schedule:
+    cron: "0 0 6 * * ?"
+    timezone: "America/New_York"

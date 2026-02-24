@@ -1,0 +1,30 @@
+gold_model:
+  name: dim_customer
+  type: materialized_view
+  description: "Customer dimension with store information"
+
+  source_tables:
+    - silver.customer
+    - silver.store
+
+  sql: |
+    SELECT
+      c.CustomerID AS customer_key,
+      c.PersonID,
+      c.StoreID,
+      s.Name AS store_name,
+      c.TerritoryID,
+      c.AccountNumber,
+      c.customer_type,
+      current_timestamp() AS etl_timestamp
+    FROM LIVE.customer c
+    LEFT JOIN LIVE.store s ON c.StoreID = s.BusinessEntityID
+
+  quality:
+    expectations:
+      - name: "customer_key_not_null"
+        constraint: "customer_key IS NOT NULL"
+        action: fail
+      - name: "valid_customer_type"
+        constraint: "customer_type IN ('Individual', 'Store')"
+        action: warn
