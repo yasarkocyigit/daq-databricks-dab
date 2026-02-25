@@ -1,0 +1,33 @@
+gold_model:
+  name: dim_supplier
+  type: dimension
+  scd_type: 1
+  natural_key: [supplier_key]
+  depends_on: [dim_region_nation]
+  description: "Supplier dimension from TPCH"
+
+  source_tables:
+    - silver.supplier
+    - silver.nation
+    - silver.region
+
+  sql: |
+    SELECT
+      s.s_suppkey AS supplier_key,
+      s.s_name AS supplier_name,
+      s.s_address AS supplier_address,
+      s.s_phone AS supplier_phone,
+      s.s_acctbal AS supplier_balance,
+      n.n_nationkey AS nation_key,
+      n.n_name AS nation_name,
+      r.r_name AS region_name,
+      current_timestamp() AS etl_timestamp
+    FROM supplier s
+    LEFT JOIN nation n ON s.s_nationkey = n.n_nationkey
+    LEFT JOIN region r ON n.n_regionkey = r.r_regionkey
+
+  quality:
+    expectations:
+      - name: "supplier_key_not_null"
+        constraint: "supplier_key IS NOT NULL"
+        action: fail

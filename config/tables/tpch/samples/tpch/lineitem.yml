@@ -1,0 +1,40 @@
+table:
+  source: tpch_samples
+  database: samples
+  source_schema: tpch
+  source_table: lineitem
+  target_name: lineitem
+  enabled: true
+  execution_order: 50
+
+  load:
+    strategy: snapshot
+    type: full
+    primary_key: [l_orderkey, l_linenumber]
+    stored_as_scd_type: 1
+    sequence_by_column: l_orderkey
+    fetch_size: 10000
+    snapshot_audit:
+      enabled: false
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "order_line_key_not_null"
+        constraint: "l_orderkey IS NOT NULL AND l_linenumber IS NOT NULL"
+        action: fail
+      - name: "positive_quantity"
+        constraint: "l_quantity > 0"
+        action: warn
+
+  silver:
+    mode: batch
+    transformations:
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [l_orderkey, l_linenumber]

@@ -2,7 +2,8 @@
 Source connector factory: returns a Spark DataFrame (batch or streaming)
 based on the source type and table configuration from YAML.
 
-Supports: JDBC (SQL Server), Event Hub, Kafka, CDC (Debezium), Auto Loader.
+Supports: Unity Catalog tables, JDBC (SQL Server, PostgreSQL), Event Hub,
+Kafka, CDC (Debezium), Auto Loader.
 """
 from .config_reader import ConfigReader, TableConfig
 
@@ -18,14 +19,19 @@ class SourceConnectorFactory:
         """Return batch or streaming DataFrame based on table config."""
         source_cfg = self.config_reader.get_source_config(table_config.source_name)
 
-        if table_config.load_type == "stream":
+        if (
+            table_config.load_type == "stream"
+            or table_config.load_strategy in {"cdc", "stream"}
+        ):
             return self._get_streaming_df(table_config, source_cfg)
         else:
             return self._get_batch_df(table_config, source_cfg)
 
     def _get_batch_df(self, table_config: TableConfig, source_cfg: dict):
         source_type = source_cfg["type"]
-        if source_type == "jdbc":
+        if source_type == "unity_catalog":
+            return self._read_unity_catalog_table(table_config, source_cfg)
+        elif source_type == "jdbc":
             return self._read_jdbc(table_config, source_cfg)
         elif source_type == "autoloader":
             return self._read_autoloader_batch(table_config, source_cfg)
@@ -33,7 +39,11 @@ class SourceConnectorFactory:
             raise ValueError(f"Unsupported batch source type: {source_type}")
 
     def _get_streaming_df(self, table_config: TableConfig, source_cfg: dict):
-        stream_type = table_config.stream_config.source_type
+        stream_type = (
+            table_config.stream_config.source_type
+            if table_config.stream_config
+            else (table_config.cdc.source_type or "cdc")
+        )
         if stream_type == "autoloader":
             return self._read_autoloader_stream(table_config, source_cfg)
         elif stream_type == "eventhub":
@@ -45,45 +55,92 @@ class SourceConnectorFactory:
         else:
             raise ValueError(f"Unsupported stream type: {stream_type}")
 
-    # -- JDBC (SQL Server primary) --
+    # -- Unity Catalog --
+
+    def _read_unity_catalog_table(self, table_config: TableConfig, source_cfg: dict):
+        """Read directly from a Unity Catalog table."""
+        conn = source_cfg.get("connection", {})
+        catalog = conn.get("catalog", table_config.database)
+        schema = table_config.source_schema
+        table = table_config.source_table
+        full_name = f"{catalog}.{schema}.{table}"
+
+        df = self.spark.read.table(full_name)
+
+        if (
+            table_config.load_type == "incremental"
+            or table_config.load_strategy == "incremental"
+        ) and table_config.watermark_column:
+            from .watermark_manager import WatermarkManager
+
+            pipeline_catalog = self.config_reader.get_env_value("catalog", default="main")
+            control_schema = self.config_reader.get_env_value(
+                "control", "schema", default="control"
+            )
+            wm = WatermarkManager(
+                self.spark,
+                catalog=pipeline_catalog,
+                control_schema=control_schema,
+            )
+            last_watermark = wm.get_watermark(table_config.target_name)
+            if last_watermark:
+                df = df.where(f"{table_config.watermark_column} > '{last_watermark}'")
+
+        return df
+
+    # -- JDBC (SQL Server / PostgreSQL) --
 
     def _read_jdbc(self, table_config: TableConfig, source_cfg: dict):
         """Read from JDBC source with full or incremental load support."""
         conn = source_cfg["connection"]
         scope = conn["host_secret_scope"]
+        driver = conn.get("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
+        dialect = self._get_jdbc_dialect(driver)
 
         dbutils = self._get_dbutils()
         host = dbutils.secrets.get(scope=scope, key=conn["host_secret_key"])
         user = dbutils.secrets.get(scope=scope, key=conn["username_secret_key"])
         password = dbutils.secrets.get(scope=scope, key=conn["password_secret_key"])
 
-        # Use database from table config if available, fallback to source config
-        database = table_config.database or conn["database"]
+        # PostgreSQL requires the connection database; SQL Server can still
+        # optionally use table-level database metadata.
+        database = conn.get("database") or table_config.database or ""
+        port = int(conn.get("port", 1433 if dialect == "sqlserver" else 5432))
 
-        jdbc_url = (
-            f"jdbc:sqlserver://{host}:{conn.get('port', 1433)};"
-            f"database={database};"
-            f"encrypt=true;trustServerCertificate=true"
+        jdbc_url = self._build_jdbc_url(
+            dialect=dialect,
+            host=host,
+            port=port,
+            database=database,
         )
 
-        query = (
-            f"SELECT * FROM [{table_config.source_schema}]"
-            f".[{table_config.source_table}]"
-        )
+        source_schema = self._quote_identifier(table_config.source_schema, dialect)
+        source_table = self._quote_identifier(table_config.source_table, dialect)
+        query = f"SELECT * FROM {source_schema}.{source_table}"
 
         # Incremental: add watermark filter
         if (
             table_config.load_type == "incremental"
-            and table_config.watermark_column
-        ):
+            or table_config.load_strategy == "incremental"
+        ) and table_config.watermark_column:
             from .watermark_manager import WatermarkManager
 
             catalog = self.config_reader.get_env_value("catalog", default="main")
-            wm = WatermarkManager(self.spark, catalog=catalog)
+            control_schema = self.config_reader.get_env_value(
+                "control", "schema", default="control"
+            )
+            wm = WatermarkManager(
+                self.spark,
+                catalog=catalog,
+                control_schema=control_schema,
+            )
             last_watermark = wm.get_watermark(table_config.target_name)
             if last_watermark:
+                watermark_column = self._quote_identifier(
+                    table_config.watermark_column, dialect
+                )
                 query += (
-                    f" WHERE [{table_config.watermark_column}] > '{last_watermark}'"
+                    f" WHERE {watermark_column} > '{last_watermark}'"
                 )
 
         reader = (
@@ -92,10 +149,7 @@ class SourceConnectorFactory:
             .option("dbtable", f"({query}) AS src")
             .option("user", user)
             .option("password", password)
-            .option(
-                "driver",
-                conn.get("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver"),
-            )
+            .option("driver", driver)
             .option("fetchsize", str(table_config.fetch_size))
         )
 
@@ -103,6 +157,35 @@ class SourceConnectorFactory:
             reader = reader.option(k, str(v))
 
         return reader.load()
+
+    def _get_jdbc_dialect(self, driver: str) -> str:
+        """Infer SQL dialect from JDBC driver class."""
+        normalized = driver.lower()
+        if "postgresql" in normalized:
+            return "postgresql"
+        if "sqlserver" in normalized or "mssql" in normalized:
+            return "sqlserver"
+        return "generic"
+
+    def _build_jdbc_url(self, dialect: str, host: str, port: int, database: str) -> str:
+        if dialect == "postgresql":
+            return f"jdbc:postgresql://{host}:{port}/{database}"
+        if dialect == "sqlserver":
+            return (
+                f"jdbc:sqlserver://{host}:{port};"
+                f"database={database};"
+                f"encrypt=true;trustServerCertificate=true"
+            )
+        raise ValueError(f"Unsupported JDBC dialect for URL build: {dialect}")
+
+    def _quote_identifier(self, value: str, dialect: str) -> str:
+        if dialect == "postgresql":
+            escaped = value.replace('"', '""')
+            return f'"{escaped}"'
+        if dialect == "sqlserver":
+            escaped = value.replace("]", "]]")
+            return f"[{escaped}]"
+        return value
 
     # -- Auto Loader --
 
@@ -158,7 +241,7 @@ class SourceConnectorFactory:
             "eventhubs.startingPosition": start_pos,
         }
 
-        if table_config.stream_config.max_offsets_per_trigger:
+        if table_config.stream_config and table_config.stream_config.max_offsets_per_trigger:
             eh_conf["maxEventsPerTrigger"] = str(
                 table_config.stream_config.max_offsets_per_trigger
             )
@@ -204,7 +287,7 @@ class SourceConnectorFactory:
                 .option("kafka.sasl.jaas.config", jaas_config)
             )
 
-        if table_config.stream_config.max_offsets_per_trigger:
+        if table_config.stream_config and table_config.stream_config.max_offsets_per_trigger:
             reader = reader.option(
                 "maxOffsetsPerTrigger",
                 str(table_config.stream_config.max_offsets_per_trigger),
@@ -217,7 +300,7 @@ class SourceConnectorFactory:
     def _read_cdc(self, table_config: TableConfig, source_cfg: dict):
         k_cfg = source_cfg.get("kafka", source_cfg.get("cdc", {}))
 
-        topic = k_cfg.get("topic") or (
+        topic = table_config.cdc.topic or k_cfg.get("topic") or (
             f"dbserver1.{table_config.source_schema}.{table_config.source_table}"
         )
 

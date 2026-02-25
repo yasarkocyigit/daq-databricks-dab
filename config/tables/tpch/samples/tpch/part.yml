@@ -1,0 +1,37 @@
+table:
+  source: tpch_samples
+  database: samples
+  source_schema: tpch
+  source_table: part
+  target_name: part
+  enabled: true
+  execution_order: 30
+
+  load:
+    strategy: snapshot
+    type: full
+    primary_key: [p_partkey]
+    stored_as_scd_type: 1
+    sequence_by_column: p_partkey
+    fetch_size: 10000
+    snapshot_audit:
+      enabled: false
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "part_key_not_null"
+        constraint: "p_partkey IS NOT NULL"
+        action: fail
+
+  silver:
+    mode: batch
+    transformations:
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [p_partkey]

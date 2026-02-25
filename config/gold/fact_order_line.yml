@@ -1,0 +1,47 @@
+gold_model:
+  name: fact_order_line
+  type: fact
+  scd_type: 1
+  depends_on:
+    - dim_customer
+    - dim_part
+    - dim_supplier
+    - dim_region_nation
+  description: "Order line fact table from TPCH orders and lineitem"
+
+  source_tables:
+    - silver.orders
+    - silver.lineitem
+    - silver.customer
+    - silver.part
+    - silver.supplier
+
+  sql: |
+    SELECT
+      CONCAT(CAST(l.l_orderkey AS STRING), '-', CAST(l.l_linenumber AS STRING)) AS order_line_key,
+      l.l_orderkey AS order_key,
+      l.l_linenumber AS line_number,
+      o.o_custkey AS customer_key,
+      l.l_partkey AS part_key,
+      l.l_suppkey AS supplier_key,
+      CAST(o.o_orderdate AS DATE) AS order_date,
+      CAST(l.l_shipdate AS DATE) AS ship_date,
+      l.l_quantity AS quantity,
+      l.l_extendedprice AS extended_price,
+      l.l_discount AS discount_rate,
+      l.l_tax AS tax_rate,
+      (l.l_extendedprice * (1 - l.l_discount)) AS net_amount,
+      (l.l_extendedprice * (1 - l.l_discount) * (1 + l.l_tax)) AS gross_amount,
+      o.o_totalprice AS order_total_price,
+      current_timestamp() AS etl_timestamp
+    FROM lineitem l
+    INNER JOIN orders o ON l.l_orderkey = o.o_orderkey
+
+  quality:
+    expectations:
+      - name: "order_line_key_not_null"
+        constraint: "order_line_key IS NOT NULL"
+        action: fail
+      - name: "quantity_positive"
+        constraint: "quantity > 0"
+        action: warn

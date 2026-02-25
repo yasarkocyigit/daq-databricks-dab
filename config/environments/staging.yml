@@ -4,7 +4,7 @@ environment:
 
   bronze:
     storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/staging/bronze"
-    schema: staging_bronze
+    schema: bronze_raw
 
   silver:
     catalog: staging_catalog
@@ -13,6 +13,10 @@ environment:
   gold:
     catalog: staging_catalog
     schema: staging_gold
+
+  control:
+    catalog: staging_catalog
+    schema: control
 
   checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/staging/_checkpoints"
 

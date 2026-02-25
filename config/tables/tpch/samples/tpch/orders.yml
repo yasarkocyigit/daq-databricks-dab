@@ -1,0 +1,37 @@
+table:
+  source: tpch_samples
+  database: samples
+  source_schema: tpch
+  source_table: orders
+  target_name: orders
+  enabled: true
+  execution_order: 40
+
+  load:
+    strategy: snapshot
+    type: full
+    primary_key: [o_orderkey]
+    stored_as_scd_type: 1
+    sequence_by_column: o_orderkey
+    fetch_size: 10000
+    snapshot_audit:
+      enabled: false
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "order_key_not_null"
+        constraint: "o_orderkey IS NOT NULL"
+        action: fail
+
+  silver:
+    mode: batch
+    transformations:
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [o_orderkey]

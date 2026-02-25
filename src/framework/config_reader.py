@@ -9,11 +9,13 @@ Directory structure:
   config/gold/{model}.yml
   config/environments/{env}.yml
 """
-import yaml
+
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
+
+import yaml
 
 
 @dataclass
@@ -40,6 +42,28 @@ class SchemaDriftConfig:
 
 
 @dataclass
+class SnapshotAuditConfig:
+    enabled: bool = False
+    retention_days: int = 90
+    partition_by: Optional[str] = None
+
+
+@dataclass
+class ReconciliationConfig:
+    enabled: bool = False
+    schedule: str = "weekly"
+    method: str = "full_snapshot"
+
+
+@dataclass
+class CdcConfig:
+    source_type: Optional[str] = None
+    topic: Optional[str] = None
+    operation_column: str = "op"
+    delete_values: List[str] = field(default_factory=lambda: ["d", "delete", "DELETE"])
+
+
+@dataclass
 class TableConfig:
     source_name: str
     database: str
@@ -48,13 +72,27 @@ class TableConfig:
     target_name: str
     enabled: bool
     execution_order: int
-    load_type: str  # full | incremental | stream
+
+    # Legacy/runtime load type used by connector dispatch: full|incremental|stream
+    load_type: str
+    # Strategy-level intent from PLAN.md: snapshot|incremental|cdc|stream
+    load_strategy: str
+
     primary_key: List[str]
     watermark_column: Optional[str]
+    sequence_by_column: Optional[str]
     fetch_size: int
+    stored_as_scd_type: int
+
     stream_config: Optional[StreamConfig]
+    snapshot_audit: SnapshotAuditConfig
+    reconciliation: ReconciliationConfig
+    cdc: CdcConfig
+
     schema_drift: SchemaDriftConfig
     expectations: List[QualityExpectation]
+
+    silver_mode: str  # batch | streaming
     silver_transformations: List[Dict]
     scd_type: int
     merge_keys: List[str]
@@ -69,12 +107,7 @@ class ConfigReader:
         self._env_config = self._load_environment()
 
     def _detect_base_path(self) -> str:
-        """Auto-detect base path by looking for databricks.yml.
-
-        In Databricks workspace, __file__ points to the workspace filesystem.
-        We walk up from src/framework/ to find the project root.
-        """
-        # Try __file__ first (works in workspace filesystem)
+        """Auto-detect base path by looking for config directory."""
         try:
             current = os.path.dirname(os.path.abspath(__file__))
             for _ in range(5):
@@ -84,13 +117,11 @@ class ConfigReader:
         except NameError:
             pass
 
-        # Fallback: try to find via sys.path entries
         for p in sys.path:
             candidate = os.path.dirname(p) if p.endswith("/src") else p
             if os.path.exists(os.path.join(candidate, "config")):
                 return candidate
 
-        # Last resort
         return os.getcwd()
 
     def _load_yaml(self, relative_path: str) -> dict:
@@ -105,11 +136,8 @@ class ConfigReader:
         return self._load_yaml(f"config/sources/{source_name}.yml")["source"]
 
     def get_all_table_configs(self) -> List[TableConfig]:
-        """Load all enabled table configs from nested directory structure.
-
-        Traverses: config/tables/{source}/{database}/{schema}/{Table}.yml
-        """
-        tables = []
+        """Load all enabled table configs from nested directory structure."""
+        tables: List[TableConfig] = []
         tables_dir = os.path.join(self.base_path, "config", "tables")
 
         for source_dir in sorted(os.listdir(tables_dir)):
@@ -137,14 +165,21 @@ class ConfigReader:
     def get_tables_by_load_type(self, load_type: str) -> List[TableConfig]:
         return [t for t in self.get_all_table_configs() if t.load_type == load_type]
 
+    def get_tables_by_load_strategy(self, load_strategy: str) -> List[TableConfig]:
+        return [
+            t for t in self.get_all_table_configs() if t.load_strategy == load_strategy
+        ]
+
     def get_gold_models(self) -> List[dict]:
-        models = []
+        models: List[dict] = []
         gold_dir = os.path.join(self.base_path, "config", "gold")
 
         for model_file in sorted(os.listdir(gold_dir)):
-            if model_file.endswith(".yml"):
-                model = self._load_yaml(f"config/gold/{model_file}")
-                models.append(model["gold_model"])
+            if not model_file.endswith(".yml"):
+                continue
+            model = self._load_yaml(f"config/gold/{model_file}")
+            # backward compatible: prefer gold_model, fallback model
+            models.append(model.get("gold_model") or model.get("model"))
 
         return models
 
@@ -157,31 +192,81 @@ class ConfigReader:
                 return default
         return env if env is not None else default
 
+    def _resolve_load_strategy(self, load: dict, stream_raw: Optional[dict]) -> str:
+        strategy = (load.get("strategy") or "").strip().lower()
+        if strategy:
+            if strategy in {"snapshot", "incremental", "cdc", "stream"}:
+                return strategy
+            return "snapshot"
+
+        # Legacy compatibility: infer strategy from load.type
+        legacy_type = (load.get("type") or "full").strip().lower()
+        if legacy_type == "full":
+            return "snapshot"
+        if legacy_type == "incremental":
+            return "incremental"
+        if legacy_type == "stream":
+            source_type = (stream_raw or {}).get("source_type", "").lower()
+            return "cdc" if source_type == "cdc" else "stream"
+        return "snapshot"
+
+    def _resolve_load_type(
+        self, load: dict, load_strategy: str, stream_raw: Optional[dict]
+    ) -> str:
+        legacy_type = (load.get("type") or "").strip().lower()
+        if legacy_type in {"full", "incremental", "stream"}:
+            return legacy_type
+
+        if load_strategy == "snapshot":
+            return "full"
+        if load_strategy == "incremental":
+            return "incremental"
+        if load_strategy in {"cdc", "stream"}:
+            return "stream"
+
+        return "stream" if stream_raw else "full"
+
     def _parse_table_config(self, raw: dict) -> TableConfig:
         load = raw.get("load", {})
         drift = raw.get("schema_drift", {})
         quality = raw.get("quality", {})
         silver = raw.get("silver", {})
+
         stream_raw = load.get("stream")
+        load_strategy = self._resolve_load_strategy(load, stream_raw)
+        load_type = self._resolve_load_type(load, load_strategy, stream_raw)
+
+        cdc_raw = load.get("cdc", {})
+        snapshot_audit_raw = load.get("snapshot_audit", {})
+        reconciliation_raw = load.get("reconciliation", {})
 
         stream_config = None
-        if stream_raw:
+        if stream_raw or load_strategy in {"cdc", "stream"}:
+            stream_raw = stream_raw or {}
             checkpoint_base = self.get_env_value("checkpoint_base", default="")
-            checkpoint = stream_raw["checkpoint_location"].replace(
-                "__CHECKPOINT_BASE__", checkpoint_base
+            checkpoint_template = stream_raw.get(
+                "checkpoint_location",
+                "__CHECKPOINT_BASE__/bronze/{target_name}",
             )
+            checkpoint = checkpoint_template.replace(
+                "__CHECKPOINT_BASE__", checkpoint_base
+            ).replace("{target_name}", raw["target_name"])
+
             env_trigger = self.get_env_value(
                 "overrides", "streaming_trigger_interval"
             )
             stream_config = StreamConfig(
-                source_type=stream_raw["source_type"],
-                trigger_interval=env_trigger or stream_raw["trigger_interval"],
+                source_type=stream_raw.get(
+                    "source_type",
+                    cdc_raw.get("source_type", "cdc" if load_strategy == "cdc" else "autoloader"),
+                ),
+                trigger_interval=env_trigger or stream_raw.get("trigger_interval", "60 seconds"),
                 checkpoint_location=checkpoint,
                 output_mode=stream_raw.get("output_mode", "append"),
                 max_offsets_per_trigger=stream_raw.get("max_offsets_per_trigger"),
             )
 
-        expectations = []
+        expectations: List[QualityExpectation] = []
         env_quality_override = self.get_env_value("overrides", "default_quality_action")
         for exp in quality.get("expectations", []):
             action = env_quality_override if env_quality_override else exp["action"]
@@ -201,18 +286,38 @@ class ConfigReader:
             target_name=raw["target_name"],
             enabled=raw.get("enabled", True),
             execution_order=raw.get("execution_order", 999),
-            load_type=load.get("type", "full"),
+            load_type=load_type,
+            load_strategy=load_strategy,
             primary_key=load.get("primary_key", []),
             watermark_column=load.get("watermark_column"),
+            sequence_by_column=load.get("sequence_by_column") or load.get("watermark_column"),
             fetch_size=load.get("fetch_size", 10000),
+            stored_as_scd_type=int(load.get("stored_as_scd_type", 1)),
             stream_config=stream_config,
+            snapshot_audit=SnapshotAuditConfig(
+                enabled=bool(snapshot_audit_raw.get("enabled", False)),
+                retention_days=int(snapshot_audit_raw.get("retention_days", 90)),
+                partition_by=snapshot_audit_raw.get("partition_by"),
+            ),
+            reconciliation=ReconciliationConfig(
+                enabled=bool(reconciliation_raw.get("enabled", False)),
+                schedule=str(reconciliation_raw.get("schedule", "weekly")),
+                method=str(reconciliation_raw.get("method", "full_snapshot")),
+            ),
+            cdc=CdcConfig(
+                source_type=cdc_raw.get("source_type"),
+                topic=cdc_raw.get("topic"),
+                operation_column=cdc_raw.get("operation_column", "op"),
+                delete_values=cdc_raw.get("delete_values", ["d", "delete", "DELETE"]),
+            ),
             schema_drift=SchemaDriftConfig(
                 mode=drift.get("mode", "auto_evolve"),
                 alert_on_drift=drift.get("alert_on_drift", True),
                 allowed_changes=drift.get("allowed_changes", ["add_column"]),
             ),
             expectations=expectations,
+            silver_mode=silver.get("mode", "batch"),
             silver_transformations=silver.get("transformations", []),
-            scd_type=silver.get("scd_type", 1),
+            scd_type=int(silver.get("scd_type", 1)),
             merge_keys=silver.get("merge_keys", load.get("primary_key", [])),
         )

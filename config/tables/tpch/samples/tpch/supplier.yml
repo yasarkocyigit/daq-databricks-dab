@@ -1,0 +1,37 @@
+table:
+  source: tpch_samples
+  database: samples
+  source_schema: tpch
+  source_table: supplier
+  target_name: supplier
+  enabled: true
+  execution_order: 25
+
+  load:
+    strategy: snapshot
+    type: full
+    primary_key: [s_suppkey]
+    stored_as_scd_type: 1
+    sequence_by_column: s_suppkey
+    fetch_size: 10000
+    snapshot_audit:
+      enabled: false
+
+  schema_drift:
+    mode: auto_evolve
+    alert_on_drift: true
+    allowed_changes: [add_column]
+
+  quality:
+    expectations:
+      - name: "supplier_key_not_null"
+        constraint: "s_suppkey IS NOT NULL"
+        action: fail
+
+  silver:
+    mode: batch
+    transformations:
+      - type: trim_strings
+        columns: all
+    scd_type: 1
+    merge_keys: [s_suppkey]

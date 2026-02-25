@@ -3,13 +3,18 @@ resources:
     bronze_ingestion:
       name: "MDI_Bronze_Ingestion_${var.environment}"
       catalog: "${var.catalog}"
-      target: "bronze_raw"
+      target: "${var.bronze_raw_schema}"
       libraries:
         - notebook:
             path: ../src/bronze/bronze_dlt.py
       configuration:
         environment: ${var.environment}
+        catalog: ${var.catalog}
+        bronze_raw_schema: ${var.bronze_raw_schema}
         bronze_storage_path: ${var.bronze_storage_path}
+        bronze_raw_prefix: ${var.bronze_raw_prefix}
+        bronze_state_prefix: ${var.bronze_state_prefix}
+        control_schema: ${var.control_schema}
         secret_scope: ${var.secret_scope}
         checkpoint_base: ${var.checkpoint_base}
       channel: PREVIEW

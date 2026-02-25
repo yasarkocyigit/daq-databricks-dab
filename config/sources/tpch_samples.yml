@@ -1,0 +1,7 @@
+source:
+  name: tpch_samples
+  type: unity_catalog
+  description: "Databricks Unity Catalog samples.tpch source tables"
+
+  connection:
+    catalog: "samples"

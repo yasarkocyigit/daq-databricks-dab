@@ -1,0 +1,27 @@
+gold_model:
+  name: dim_region_nation
+  type: dimension
+  scd_type: 1
+  natural_key: [nation_key]
+  depends_on: []
+  description: "Region and nation dimension"
+
+  source_tables:
+    - silver.region
+    - silver.nation
+
+  sql: |
+    SELECT
+      n.n_nationkey AS nation_key,
+      n.n_name AS nation_name,
+      n.n_regionkey AS region_key,
+      r.r_name AS region_name,
+      current_timestamp() AS etl_timestamp
+    FROM nation n
+    LEFT JOIN region r ON n.n_regionkey = r.r_regionkey
+
+  quality:
+    expectations:
+      - name: "nation_key_not_null"
+        constraint: "nation_key IS NOT NULL"
+        action: fail

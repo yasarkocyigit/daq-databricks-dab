@@ -1,0 +1,21 @@
+gold_model:
+  name: pipeline_quality_kpis
+  type: monitoring
+  scd_type: 1
+  depends_on:
+    - fact_order_line
+  description: "Serving-layer KPI snapshot for row volumes and freshness"
+
+  source_tables:
+    - silver.region
+    - silver.nation
+    - silver.customer
+    - silver.orders
+    - silver.lineitem
+
+  sql: |
+    SELECT
+      current_timestamp() AS collected_at,
+      COUNT(*) AS silver_region_rows
+    FROM region
+

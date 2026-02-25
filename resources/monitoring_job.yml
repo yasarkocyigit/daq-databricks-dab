@@ -5,9 +5,6 @@ resources:
       schedule:
         quartz_cron_expression: "0 */30 * * * ?"
         timezone_id: "America/New_York"
-      email_notifications:
-        on_failure:
-          - yasarkocyigit@daqconsulting.com
       tasks:
         - task_key: health_check
           notebook_task:
@@ -15,6 +12,10 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               environment: ${var.environment}
+              bronze_raw_schema: ${var.bronze_raw_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              control_schema: ${var.control_schema}
               checkpoint_base: ${var.checkpoint_base}
           new_cluster:
             num_workers: 1

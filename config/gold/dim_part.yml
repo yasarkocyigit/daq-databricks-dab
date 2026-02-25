@@ -1,0 +1,29 @@
+gold_model:
+  name: dim_part
+  type: dimension
+  scd_type: 1
+  natural_key: [part_key]
+  depends_on: []
+  description: "Part dimension from TPCH"
+
+  source_tables:
+    - silver.part
+
+  sql: |
+    SELECT
+      p_partkey AS part_key,
+      p_name AS part_name,
+      p_mfgr AS manufacturer,
+      p_brand AS brand,
+      p_type AS part_type,
+      p_size AS part_size,
+      p_container AS container,
+      p_retailprice AS retail_price,
+      current_timestamp() AS etl_timestamp
+    FROM part
+
+  quality:
+    expectations:
+      - name: "part_key_not_null"
+        constraint: "part_key IS NOT NULL"
+        action: fail

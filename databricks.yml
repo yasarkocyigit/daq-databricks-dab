@@ -7,16 +7,34 @@ workspace:
 variables:
   catalog:
     description: "Unity Catalog name"
-    default: main
+    default: dev_catalog
+  bronze_raw_schema:
+    description: "Bronze raw schema name"
+    default: bronze_raw
+  bronze_state_schema:
+    description: "Bronze state schema name (reserved for roadmap)"
+    default: bronze_state
   bronze_storage_path:
     description: "ADLS path for Bronze external tables"
     default: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
+  bronze_raw_prefix:
+    description: "Prefix for bronze raw tables"
+    default: raw_
+  bronze_state_prefix:
+    description: "Prefix for bronze state tables"
+    default: state_
   silver_schema:
     description: "Silver schema name"
     default: silver_data
+  silver_quarantine_prefix:
+    description: "Prefix for silver quarantine tables"
+    default: quarantine_
   gold_schema:
     description: "Gold schema name"
     default: gold_analytics
+  control_schema:
+    description: "Schema for framework control tables"
+    default: control
   checkpoint_base:
     description: "Base path for streaming checkpoints"
     default: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
@@ -38,10 +56,16 @@ targets:
     mode: development
     default: true
     variables:
-      catalog: daq_dev_dbx
+      catalog: dev_catalog
+      bronze_raw_schema: bronze_raw
+      bronze_state_schema: bronze_state
       bronze_storage_path: ""
+      bronze_raw_prefix: raw_
+      bronze_state_prefix: state_
       silver_schema: dev_silver
+      silver_quarantine_prefix: quarantine_
       gold_schema: dev_gold
+      control_schema: control
       checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/dev/_checkpoints"
       environment: dev
       num_workers: 1
@@ -49,9 +73,15 @@ targets:
   staging:
     variables:
       catalog: staging_catalog
+      bronze_raw_schema: bronze_raw
+      bronze_state_schema: bronze_state
       bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/staging/bronze"
+      bronze_raw_prefix: raw_
+      bronze_state_prefix: state_
       silver_schema: staging_silver
+      silver_quarantine_prefix: quarantine_
       gold_schema: staging_gold
+      control_schema: control
       checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/staging/_checkpoints"
       environment: staging
       num_workers: 2
@@ -59,12 +89,16 @@ targets:
   prod:
     mode: production
     variables:
-      catalog: main
+      catalog: prod_catalog
+      bronze_raw_schema: bronze_raw
+      bronze_state_schema: bronze_state
       bronze_storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
+      bronze_raw_prefix: raw_
+      bronze_state_prefix: state_
       silver_schema: silver_data
+      silver_quarantine_prefix: quarantine_
       gold_schema: gold_analytics
+      control_schema: control
       checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
       environment: prod
       num_workers: 4
-    run_as:
-      user_name: yasarkocyigit@daqconsulting.com

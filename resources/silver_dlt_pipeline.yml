@@ -10,6 +10,9 @@ resources:
       configuration:
         environment: ${var.environment}
         catalog: ${var.catalog}
+        bronze_raw_schema: ${var.bronze_raw_schema}
+        bronze_state_prefix: ${var.bronze_state_prefix}
+        silver_quarantine_prefix: ${var.silver_quarantine_prefix}
         silver_schema: ${var.silver_schema}
         secret_scope: ${var.secret_scope}
       channel: PREVIEW

@@ -11,18 +11,24 @@ get_watermark() is safe to call inside SDP decorators (read-only).
 class WatermarkManager:
     """Manages incremental load watermarks using a Delta table."""
 
-    TABLE_TEMPLATE = "{catalog}.framework.watermarks"
+    TABLE_TEMPLATE = "{catalog}.{control_schema}.watermarks"
 
-    def __init__(self, spark, catalog: str = "main"):
+    def __init__(self, spark, catalog: str = "main", control_schema: str = "control"):
         self.spark = spark
         self.catalog = catalog
-        self.table_name = self.TABLE_TEMPLATE.format(catalog=catalog)
+        self.control_schema = control_schema
+        self.table_name = self.TABLE_TEMPLATE.format(
+            catalog=catalog,
+            control_schema=control_schema,
+        )
 
     def _ensure_table_exists(self):
         """Create the watermarks table and schema if they don't exist.
         Only call this OUTSIDE of SDP pipeline decorators.
         """
-        self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS {self.catalog}.framework")
+        self.spark.sql(
+            f"CREATE SCHEMA IF NOT EXISTS {self.catalog}.{self.control_schema}"
+        )
         self.spark.sql(f"""
             CREATE TABLE IF NOT EXISTS {self.table_name} (
                 table_name STRING,

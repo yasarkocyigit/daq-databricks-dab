@@ -5,9 +5,6 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 6 * * ?"
         timezone_id: "America/New_York"
-      email_notifications:
-        on_failure:
-          - yasarkocyigit@daqconsulting.com
       tasks:
         - task_key: bronze_ingestion
           pipeline_task:

@@ -1,18 +1,22 @@
 environment:
   name: prod
-  catalog: main
+  catalog: prod_catalog
 
   bronze:
     storage_path: "abfss://datalake@daqprod.dfs.core.windows.net/bronze"
     schema: bronze_raw
 
   silver:
-    catalog: main
+    catalog: prod_catalog
     schema: silver_data
 
   gold:
-    catalog: main
+    catalog: prod_catalog
     schema: gold_analytics
+
+  control:
+    catalog: prod_catalog
+    schema: control
 
   checkpoint_base: "abfss://datalake@daqprod.dfs.core.windows.net/_checkpoints"
 

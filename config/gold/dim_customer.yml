@@ -1,30 +1,42 @@
 gold_model:
   name: dim_customer
-  type: materialized_view
-  description: "Customer dimension with store information"
+  type: dimension
+  scd_type: 2
+  natural_key: [customer_key]
+  depends_on: [dim_region_nation]
+  track_history_columns:
+    - customer_name
+    - customer_address
+    - customer_phone
+    - account_balance
+    - market_segment
+    - nation_key
+    - nation_name
+    - region_name
+  description: "Customer dimension from TPCH"
 
   source_tables:
     - silver.customer
-    - silver.store
+    - silver.nation
+    - silver.region
 
   sql: |
     SELECT
-      c.CustomerID AS customer_key,
-      c.PersonID,
-      c.StoreID,
-      s.Name AS store_name,
-      c.TerritoryID,
-      c.AccountNumber,
-      c.customer_type,
-      current_timestamp() AS etl_timestamp
+      c.c_custkey AS customer_key,
+      c.c_name AS customer_name,
+      c.c_address AS customer_address,
+      c.c_phone AS customer_phone,
+      c.c_acctbal AS account_balance,
+      c.c_mktsegment AS market_segment,
+      n.n_nationkey AS nation_key,
+      n.n_name AS nation_name,
+      r.r_name AS region_name
     FROM customer c
-    LEFT JOIN store s ON c.StoreID = s.BusinessEntityID
+    LEFT JOIN nation n ON c.c_nationkey = n.n_nationkey
+    LEFT JOIN region r ON n.n_regionkey = r.r_regionkey
 
   quality:
     expectations:
       - name: "customer_key_not_null"
         constraint: "customer_key IS NOT NULL"
         action: fail
-      - name: "valid_customer_type"
-        constraint: "customer_type IN ('Individual', 'Store')"
-        action: warn
