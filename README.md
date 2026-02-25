@@ -35,6 +35,9 @@ Key design goals:
 - Operational visibility through monitoring checks and control-state tables.
 
 ## Architecture
+<img width="1497" height="805" alt="databricks sdp " src="https://github.com/user-attachments/assets/26cb45bf-a8a0-459d-9470-92f769a95d37" />
+
+
 ```mermaid
 flowchart TD
     A[Unity Catalog Source\nsamples.tpch.*] --> B[Bronze Pipeline\nstate_* / raw_*]
