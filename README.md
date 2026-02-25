@@ -1,110 +1,105 @@
-# Metadata-Driven Ingestion Framework
+# Metadata-Driven Lakehouse Ingestion
 
-Production-style Databricks medallion framework powered by **Databricks Asset Bundles**, **Spark Declarative Pipelines**, and **metadata-driven YAML contracts**.
+A production-oriented Databricks medallion framework built with Databricks Asset Bundles, Lakeflow Declarative Pipelines, and metadata contracts in YAML.
 
-Primary source profile is currently **Unity Catalog `samples.tpch`**.
+Current active source domain: `samples.tpch` in Unity Catalog.
 
-## Table of Contents
+## Contents
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [What Is Active Right Now](#what-is-active-right-now)
+- [Repository Layout](#repository-layout)
+- [Layer Contracts](#layer-contracts)
+- [Table Type Decision Matrix](#table-type-decision-matrix)
+- [Managed vs External vs MV vs Streaming](#managed-vs-external-vs-mv-vs-streaming)
+- [Configuration Contracts](#configuration-contracts)
+- [Environments](#environments)
+- [Deploy and Run](#deploy-and-run)
+- [Operations Runbook](#operations-runbook)
+- [Troubleshooting](#troubleshooting)
+- [Public Repo Security Checklist](#public-repo-security-checklist)
 
-- [1. Executive Summary](#1-executive-summary)
-- [2. Architecture](#2-architecture)
-- [3. Runtime Topology](#3-runtime-topology)
-- [4. Repository Structure](#4-repository-structure)
-- [5. Naming Conventions](#5-naming-conventions)
-- [6. Source and Table Scope](#6-source-and-table-scope)
-- [7. Strategy Model (Bronze)](#7-strategy-model-bronze)
-- [8. Silver Layer Behavior](#8-silver-layer-behavior)
-- [9. Gold Layer Behavior](#9-gold-layer-behavior)
-- [9.1 Table Type Decision Matrix (End-to-End)](#91-table-type-decision-matrix-end-to-end)
-- [10. Configuration Contracts](#10-configuration-contracts)
-- [11. Environments](#11-environments)
-- [12. Deploy and Run](#12-deploy-and-run)
-- [13. Monitoring and Health](#13-monitoring-and-health)
-- [14. PLAN.md Alignment](#14-planmd-alignment)
-- [15. Known Constraints](#15-known-constraints)
+## Overview
+This project implements a metadata-driven ingestion lifecycle:
 
-## 1. Executive Summary
+1. Ingest source tables into Bronze using strategy-based logic (`snapshot`, `incremental`, `cdc`).
+2. Promote to Silver for quality enforcement, conformance, and quarantine.
+3. Build Gold dimensional/fact serving models.
 
-This project implements a configurable ingestion framework with these core principles:
+Key design goals:
 
-- **Metadata first**: source, table, quality, and model logic live in YAML.
-- **Strategy-aware Bronze**: `snapshot`, `incremental`, and `cdc` strategy paths are supported.
-- **Stateful ingestion**: control tables track ingestion and reconciliation metadata.
-- **Contracted promotion path**: Bronze -> Silver -> Gold via orchestrated pipelines.
-- **Environment portability**: dev/staging/prod behavior is parameterized through bundle targets.
+- Metadata-first behavior from YAML contracts.
+- Deterministic promotion order (Bronze -> Silver -> Gold).
+- Strategy-aware ingest model at Bronze.
+- Environment portability through bundle target variables.
+- Operational visibility through monitoring checks and control-state tables.
 
-Current active data domain is TPCH (`samples.tpch`) with curated dimension/fact outputs.
-
-## 2. Architecture
-
-```text
-Unity Catalog Source
-  samples.tpch.*
-       |
-       v
-Bronze Pipeline (bronze_raw schema)
-  raw_<table>    : audit/raw capture
-  state_<table>  : current-state representation
-       |
-       v
-Silver Pipeline (<silver_schema>)
-  <table>             : cleansed/conformed
-  quarantine_<table>  : warn-rule violations
-       |
-       v
-Gold Pipeline (<gold_schema>)
-  dimensions/facts + dim_date + pipeline_quality_kpis
-       |
-       v
-Consumption (BI / Analytics)
+## Architecture
+```mermaid
+flowchart TD
+    A[Unity Catalog Source\nsamples.tpch.*] --> B[Bronze Pipeline\nstate_* / raw_*]
+    B --> C[Silver Pipeline\nconformed + quarantine_*]
+    C --> D[Gold Pipeline\ndim/fact + KPI models]
+    D --> E[BI / Analytics / Serving]
 ```
 
-## 3. Runtime Topology
+Runtime resources:
 
-### Databricks resources
+- Pipelines:
+  - `MDI_Bronze_Ingestion_<env>`
+  - `MDI_Silver_Transform_<env>`
+  - `MDI_Gold_Analytics_<env>`
+- Jobs:
+  - `MDI_Orchestrator_<env>`
+  - `MDI_Monitoring_<env>`
 
-- Pipeline: `MDI_Bronze_Ingestion_<env>`
-- Pipeline: `MDI_Silver_Transform_<env>`
-- Pipeline: `MDI_Gold_Analytics_<env>`
-- Job: `MDI_Orchestrator_<env>`
-- Job: `MDI_Monitoring_<env>`
-
-### Orchestration order
+Orchestration sequence:
 
 1. `bronze_ingestion`
 2. `silver_transform`
 3. `gold_analytics`
 
-## 4. Repository Structure
+## What Is Active Right Now
+Active source config:
 
+- File: `config/sources/tpch_samples.yml`
+- Source type: `unity_catalog`
+- Source catalog: `samples`
+
+Active TPCH tables:
+
+- `region`
+- `nation`
+- `customer`
+- `supplier`
+- `part`
+- `partsupp`
+- `orders`
+- `lineitem`
+
+Current ingest profile:
+
+- All TPCH Bronze table configs are `load.strategy: snapshot`.
+- No active `incremental` table config.
+- No active `cdc` table config.
+- `snapshot_audit.enabled: false` for all active TPCH tables.
+
+Current Gold model profile:
+
+- `dim_customer` is `scd_type: 2`.
+- Other Gold models are `scd_type: 1`.
+
+## Repository Layout
 ```text
 .
 ├── databricks.yml
 ├── PLAN.md
 ├── config/
 │   ├── environments/
-│   │   ├── dev.yml
-│   │   ├── staging.yml
-│   │   └── prod.yml
 │   ├── sources/
-│   │   └── tpch_samples.yml
 │   ├── tables/
-│   │   └── tpch/samples/tpch/
-│   │       ├── region.yml
-│   │       ├── nation.yml
-│   │       ├── customer.yml
-│   │       ├── supplier.yml
-│   │       ├── part.yml
-│   │       ├── partsupp.yml
-│   │       ├── orders.yml
-│   │       └── lineitem.yml
-│   └── gold/
-│       ├── dim_region_nation.yml
-│       ├── dim_customer.yml
-│       ├── dim_supplier.yml
-│       ├── dim_part.yml
-│       ├── fact_order_line.yml
-│       └── pipeline_quality_kpis.yml
+│   │   └── tpch/samples/tpch/*.yml
+│   └── gold/*.yml
 ├── resources/
 │   ├── bronze_dlt_pipeline.yml
 │   ├── silver_dlt_pipeline.yml
@@ -116,193 +111,126 @@ Consumption (BI / Analytics)
 │   ├── silver/silver_dlt.py
 │   ├── gold/gold_dlt.py
 │   ├── framework/
-│   │   ├── config_reader.py
-│   │   ├── source_connectors.py
-│   │   ├── quality_engine.py
-│   │   ├── schema_drift.py
-│   │   ├── watermark_manager.py
-│   │   └── state_manager.py
 │   └── utils/health_check.py
 └── .github/workflows/deploy.yml
 ```
 
-## 5. Naming Conventions
-
+## Layer Contracts
 ### Bronze
+Implemented in `src/bronze/bronze_dlt.py`.
 
-- Raw datasets: `raw_<target_name>`
-- State datasets: `state_<target_name>`
+Naming:
+
+- Raw: `raw_<target_name>`
+- State: `state_<target_name>`
 - Schema: `${var.bronze_raw_schema}` (default `bronze_raw`)
 
-### Silver
+Strategy paths:
 
-- Clean datasets: `<target_name>`
-- Quarantine datasets: `quarantine_<target_name>`
+- `snapshot`
+  - Build temporary snapshot view.
+  - Optional raw snapshot audit (`raw_*`) only if `snapshot_audit.enabled`.
+  - State apply via `create_auto_cdc_from_snapshot_flow` when runtime supports it.
+  - Fallback to materialized-view state when snapshot AUTO CDC API is unavailable.
+- `incremental`
+  - Build `raw_*` with incremental extract behavior.
+  - Build `state_*` via latest-per-key approximation.
+- `cdc`
+  - Build `raw_*` as streaming input table.
+  - Build `state_*` via `create_auto_cdc_flow` when available.
+  - Fallback to streaming passthrough state.
+
+### Silver
+Implemented in `src/silver/silver_dlt.py`.
+
+Responsibilities:
+
+- Reads Bronze `state_*` datasets.
+- Applies YAML transformations.
+- Enforces quality expectations (`warn`, `drop`, `fail`).
+- Emits quarantine datasets for warn-rule violations.
+
+Naming:
+
+- Conformed: `<target_name>`
+- Quarantine: `quarantine_<target_name>`
 - Schema: `${var.silver_schema}`
 
 ### Gold
-
-- Dim/fact models from `config/gold/*.yml`
-- Auto models:
-  - `dim_date`
-  - `pipeline_quality_kpis`
-- Schema: `${var.gold_schema}`
-
-### Control
-
-Control tables are created under `${var.control_schema}`:
-
-- `watermarks`
-- `batch_state`
-- `reconciliation_log`
-- `source_metadata`
-
-## 6. Source and Table Scope
-
-### Active source
-
-File: `config/sources/tpch_samples.yml`
-
-- `type: unity_catalog`
-- `connection.catalog: samples`
-
-### Active TPCH tables
-
-- `region` (order 5)
-- `nation` (order 10)
-- `customer` (order 20)
-- `supplier` (order 25)
-- `part` (order 30)
-- `partsupp` (order 35)
-- `orders` (order 40)
-- `lineitem` (order 50)
-
-### Current strategy status (important)
-
-For the current TPCH setup:
-
-- All Bronze table configs are `load.strategy: snapshot`
-- There are currently no `incremental` tables
-- There are currently no `cdc`/true stream tables
-- `snapshot_audit.enabled` is `false` for all TPCH tables, so `raw_<table>` audit datasets are not materialized in normal runs
-
-## 7. Strategy Model (Bronze)
-
-Implemented in `src/bronze/bronze_dlt.py`.
-
-### `snapshot`
-
-- Reads full source snapshot.
-- Builds temporary snapshot source view.
-- Optional raw snapshot audit table (`snapshot_audit.enabled`).
-- Applies to `state_<table>` via `create_auto_cdc_from_snapshot_flow` when available.
-- Falls back to materialized view state if API support is unavailable.
-- In this path, `state_<table>` can be a **streaming table** even when source is not a real-time stream.
-
-### `incremental`
-
-- Reads incremental deltas (watermark-driven where configured by source connector).
-- Persists into `raw_<table>`.
-- Produces `state_<table>` by latest-record-per-key fallback logic.
-
-### `cdc`
-
-- Reads CDC stream into `raw_<table>`.
-- Applies into `state_<table>` via `create_auto_cdc_flow` when API support exists.
-- Falls back to streaming passthrough state table otherwise.
-- This is the path that represents true stream/CDC ingestion semantics.
-
-## 8. Silver Layer Behavior
-
-Implemented in `src/silver/silver_dlt.py`.
-
-- Reads Bronze **state** datasets.
-- Applies table-level transformations from YAML.
-- Applies expectation actions (`warn`, `drop`, `fail`).
-- Writes conformed Silver datasets.
-- Emits quarantine datasets for `warn` rules.
-- Supports SCD2 flow path when `scd_type: 2` and APIs are available.
-
-Decision rules in code:
-
-- `streaming_mode = (silver.mode == "streaming") OR (load.strategy in {"cdc","stream"}) OR (load_type == "stream")`
-- If `scd_type == 2` and not `streaming_mode`:
-  - Uses snapshot SCD2 flow (`create_auto_cdc_from_snapshot_flow`) targeting a streaming table
-- Else:
-  - `streaming_mode = true` -> `@dp.table` (streaming table path)
-  - `streaming_mode = false` -> `@dp.materialized_view` (batch MV path)
-
-Current TPCH behavior:
-
-- All Silver datasets run in batch mode (`silver.mode: batch`)
-- Silver output tables are materialized view path (plus quarantine MVs when warn rules exist)
-
-## 9. Gold Layer Behavior
-
 Implemented in `src/gold/gold_dlt.py`.
 
-- Loads model configs from `config/gold/*.yml`.
-- Resolves SQL references (`silver.<table>`) to fully-qualified catalog/schema names.
-- Orders model execution using `depends_on`.
-- Supports:
-  - SCD1 materialized views
-  - SCD2 snapshot flow models (`scd_type: 2` + `natural_key`)
-- Auto-builds:
-  - `dim_date`
-  - `pipeline_quality_kpis`
+Responsibilities:
 
-Current model outcomes:
+- Loads models from `config/gold/*.yml`.
+- Qualifies `silver.<table>` references to fully-qualified names.
+- Orders model build using `depends_on`.
+- Supports SCD1 and SCD2 model paths.
 
-- `dim_customer` has `scd_type: 2` -> created via SCD2 snapshot flow path (streaming-table target)
-- Other gold models (`dim_region_nation`, `dim_supplier`, `dim_part`, `fact_order_line`) are MVs
-- Auto models `dim_date` and `pipeline_quality_kpis` are MVs
+Auto models:
 
-### 9.1 Table Type Decision Matrix (End-to-End)
+- `dim_date`
+- `pipeline_quality_kpis`
 
-This project decides table type from metadata, not from layer name alone.
+## Table Type Decision Matrix
+### 1) Decision rules by metadata
+| Layer | Metadata / Condition | Output Type |
+|---|---|---|
+| Bronze | `load.strategy = snapshot` + snapshot AUTO CDC available | `state_*` streaming table |
+| Bronze | `load.strategy = snapshot` + API unavailable | `state_*` materialized view |
+| Bronze | `load.strategy = incremental` | `raw_*` MV + `state_*` MV |
+| Bronze | `load.strategy in {cdc, stream}` | `raw_*` streaming table + `state_*` streaming apply/fallback |
+| Silver | `streaming_mode = true` | `@dp.table` path (streaming table) |
+| Silver | `streaming_mode = false` | materialized view path |
+| Silver | `scd_type = 2` and non-stream mode | snapshot SCD2 flow (streaming-table target) or MV fallback |
+| Gold | `scd_type = 1` | materialized view |
+| Gold | `scd_type = 2` + `natural_key` + API support | streaming table + snapshot flow |
+| Gold | SCD2 prerequisites missing | MV fallback |
 
-`Bronze`:
+`streaming_mode` (Silver) is computed as:
 
-- `load.strategy = snapshot`
-  - `state_<table>`: streaming table when snapshot AUTO CDC API is available
-  - Fallback: materialized view state
-  - `raw_<table>` only if `snapshot_audit.enabled: true`
-- `load.strategy = incremental`
-  - `raw_<table>`: materialized view
-  - `state_<table>`: materialized view (latest-per-key approximation)
-- `load.strategy in {cdc, stream}`
-  - `raw_<table>`: streaming table (`@dp.table`)
-  - `state_<table>`: streaming table with `create_auto_cdc_flow` (or streaming fallback)
+- `silver.mode == "streaming"`
+- or `load.strategy in {"cdc", "stream"}`
+- or legacy `load_type == "stream"`
 
-`Silver`:
+### 2) Current project outcome
+| Layer | Current TPCH result |
+|---|---|
+| Bronze | All active tables use `snapshot`; state tables are snapshot-state path |
+| Silver | All active tables use `silver.mode: batch`; outputs are batch path |
+| Gold | `dim_customer` (SCD2) uses streaming-table SCD2 path; others are MV |
 
-- `streaming_mode = true` -> standard table path (`@dp.table`)
-- `streaming_mode = false` -> materialized view path
-- `scd_type = 2` with non-stream mode -> snapshot SCD2 flow path (streaming table target), otherwise fallback MV
+## Managed vs External vs MV vs Streaming
+These are two separate axes and should not be mixed.
 
-`Gold`:
+Storage axis:
 
-- `scd_type = 1` -> materialized view
-- `scd_type = 2` + `natural_key` + API support -> streaming table + `create_auto_cdc_from_snapshot_flow`
-- If SCD2 prerequisites are missing -> fallback MV
+- Managed table
+- External table
+
+Processing axis:
+
+- Materialized view
+- Streaming table
+
+A dataset can be, for example:
+
+- managed + MV
+- managed + streaming table
+- external + MV
+
+In this project:
+
+- Bronze may get external locations when `bronze_storage_path` is set.
+- Silver/Gold are generally managed unless an explicit path is introduced.
 
 Important clarification:
 
-- `streaming table` in DLT/Lakeflow is an execution/state-management construct.
-- It does **not** always mean the upstream source is Kafka/Event Hub real-time stream.
-- In this project, snapshot-driven SCD2/state handling can still produce streaming tables.
+- A `streaming table` does not automatically mean the upstream source is real-time Kafka/Event Hub.
+- Snapshot-driven AUTO CDC/state workflows can still target streaming tables.
 
-Managed/external vs MV/streaming are different axes:
-
-- Storage axis: managed vs external (where data files are stored/managed)
-- Processing axis: materialized view vs streaming table (how updates are processed)
-- A table can be managed+streaming, managed+MV, or external+MV depending on configuration
-
-## 10. Configuration Contracts
-
+## Configuration Contracts
 ### Source contract
-
-`config/sources/<source>.yml`
+Path: `config/sources/<source>.yml`
 
 Core fields:
 
@@ -311,120 +239,121 @@ Core fields:
 - `source.connection.*`
 
 ### Table contract
-
-`config/tables/<source>/<db>/<schema>/<table>.yml`
+Path: `config/tables/<source>/<db>/<schema>/<table>.yml`
 
 Core fields:
 
-- `table.source`, `table.source_schema`, `table.source_table`, `table.target_name`
-- `table.execution_order`
-- `table.load.strategy` (`snapshot|incremental|cdc`)
-- `table.load.primary_key`
-- `table.load.stored_as_scd_type`
-- `table.load.sequence_by_column`
-- `table.load.snapshot_audit`
-- `table.load.reconciliation`
-- `table.load.cdc`
-- `table.schema_drift.*`
-- `table.quality.expectations[]`
-- `table.silver.mode`
-- `table.silver.transformations[]`
-- `table.silver.scd_type`
-- `table.silver.merge_keys`
+- Identity and execution: `source`, `source_schema`, `source_table`, `target_name`, `execution_order`
+- Load: `load.strategy`, `primary_key`, `stored_as_scd_type`, `sequence_by_column`, `snapshot_audit`, `reconciliation`, `cdc`
+- Schema drift: `schema_drift.*`
+- Quality: `quality.expectations[]`
+- Silver behavior: `silver.mode`, `silver.transformations[]`, `silver.scd_type`, `silver.merge_keys`
 
 ### Gold model contract
-
-`config/gold/<model>.yml`
+Path: `config/gold/<model>.yml`
 
 Core fields:
 
 - `gold_model.name`
 - `gold_model.type` (`dimension|fact|monitoring`)
 - `gold_model.scd_type`
-- `gold_model.natural_key` (required for SCD2)
+- `gold_model.natural_key` (required for SCD2 path)
 - `gold_model.depends_on`
 - `gold_model.source_tables`
 - `gold_model.sql`
 - `gold_model.quality.expectations[]`
 
-## 11. Environments
+## Environments
+Environment overlays: `config/environments/*.yml`.
+Bundle variable mapping: `databricks.yml` targets.
 
-Environment overlays live in `config/environments/*.yml` and bundle target variables live in `databricks.yml`.
+| Target | Catalog | Silver Schema | Gold Schema | Workers |
+|---|---|---|---|---|
+| `dev` | `dev_catalog` | `dev_silver` | `dev_gold` | 1 |
+| `staging` | `staging_catalog` | `staging_silver` | `staging_gold` | 2 |
+| `prod` | `prod_catalog` | `silver_data` | `gold_analytics` | 4 |
 
-### `dev`
-
-- `catalog: dev_catalog`
-- `silver_schema: dev_silver`
-- `gold_schema: dev_gold`
-- `num_workers: 1`
-
-### `staging`
-
-- `catalog: staging_catalog`
-- `silver_schema: staging_silver`
-- `gold_schema: staging_gold`
-- `num_workers: 2`
-
-### `prod`
-
-- `catalog: prod_catalog`
-- `silver_schema: silver_data`
-- `gold_schema: gold_analytics`
-- `num_workers: 4`
-
-## 12. Deploy and Run
-
+## Deploy and Run
 ```bash
-# Validate bundle (dev)
+# 1) Validate configuration
 databricks bundle validate -t dev --profile DEFAULT
 
-# Deploy bundle (dev)
+# 2) Deploy resources
 databricks bundle deploy -t dev --profile DEFAULT
 
-# Show deployed resources
+# 3) Inspect deployed resources (pipeline IDs, URLs)
 databricks bundle summary -t dev --profile DEFAULT
 
-# Trigger orchestrator
+# 4) Run orchestrator job
 databricks bundle run orchestrator -t dev --profile DEFAULT
 ```
 
-If deploy prompts for recreation confirmation:
+If a catalog change is made for an existing pipeline, recreate resources first:
 
 ```bash
-databricks bundle deploy -t dev --profile DEFAULT --auto-approve
+databricks bundle destroy -t dev --profile DEFAULT --auto-approve
+databricks bundle deploy -t dev --profile DEFAULT
 ```
 
-## 13. Monitoring and Health
+## Operations Runbook
+### Manual layer-by-layer run
+1. Run Bronze pipeline update.
+2. Wait for terminal `COMPLETED`.
+3. Run Silver.
+4. Wait for terminal `COMPLETED`.
+5. Run Gold.
 
-Monitoring job executes `src/utils/health_check.py` and checks:
+### Verify update state
+```bash
+databricks pipelines list-updates <PIPELINE_ID> --max-results 5 --profile DEFAULT -o json
+```
 
-- watermark freshness from `<catalog>.<control_schema>.watermarks`
-- row-count summaries for Bronze/Silver/Gold schemas
-- environment-scoped health output
+### Inspect failure root-cause
+```bash
+databricks pipelines list-pipeline-events <PIPELINE_ID> --max-results 200 --profile DEFAULT -o json
+```
 
-Monitoring schedule:
+## Troubleshooting
+### Pipeline waits too long at `WAITING_FOR_RESOURCES`
+Typical causes:
 
-- cron: `0 */30 * * * ?`
-- timezone: `America/New_York`
+- Workspace/cluster capacity queue.
+- VM SKU pressure on region.
+- Concurrency saturation from other jobs.
 
-## 14. PLAN.md Alignment
+Actions:
 
-Major plan-level gaps that are now implemented in codebase:
+- Reduce concurrent runs.
+- Use a more available node type for dev.
+- Re-run after capacity settles.
 
-- strategy-aware Bronze model
-- control schema state tables
-- Silver quarantine path
-- Gold dependency ordering
-- Gold SCD2-capable model path
-- monitoring KPI model
+### `apply_changes_from_snapshot() got an unexpected keyword argument 'name'`
+Cause:
 
-Current deliberate deviations:
+- Runtime-specific AUTO CDC snapshot signature mismatch.
 
-- physical `bronze_state` **separate schema** is not used; state datasets are `state_*` inside Bronze raw schema.
-- 2-pipeline target topology from plan is not applied; runtime keeps 3 dedicated layer pipelines.
+Status:
 
-## 15. Known Constraints
+- Compatibility filtering is implemented in Bronze/Silver/Gold code paths.
 
-1. `bundle run` and direct API commands can intermittently fail if workspace host DNS resolution is unstable.
-2. CI workflow currently uses `metadata-driven-ingestion` as working directory/path filter; adjust if repo root remains `daq-databricks-dab`.
-3. Local `.DS_Store` files are non-runtime artifacts and should be ignored in version control.
+### DNS / connectivity instability
+Symptoms:
+
+- `no such host` from Databricks CLI or `git push`.
+
+Actions:
+
+- Retry after network stabilizes.
+- Re-run deploy/run command once DNS resolves.
+
+## Public Repo Security Checklist
+Before pushing:
+
+1. Do not commit PATs, passwords, private keys, raw connection strings.
+2. Keep credentials in Databricks Secret Scopes only.
+3. Ensure local artifacts are ignored (`.databricks/`, `.env*`, key files, `.DS_Store`).
+4. Run a quick pattern scan on staged diff for token/secret leaks.
+5. Remove personal-only email notification targets if repository is public.
+
+---
+For design rationale and longer-term roadmap details, see `PLAN.md`.
