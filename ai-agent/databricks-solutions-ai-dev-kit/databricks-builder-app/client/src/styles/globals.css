@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Theme CSS Variables
+ * Based on template theming system with simplified defaults.
+ */
+:root {
+  /* TEXT COLORS */
+  --color-text-heading: #09090B;
+  --color-text-primary: #18181B;
+  --color-text-muted: #71717A;
+
+  /* ACCENT/BRAND COLOR - Databricks Brand */
+  --color-accent-primary: #FF3621;
+  --color-accent-secondary: #FF5F46;
+
+  /* BACKGROUND COLORS */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F9F7F4;
+  --color-bg-tertiary: #F0EDEA;
+  --color-bg-elevated: #FFFFFF;
+
+  /* BORDER */
+  --color-border: #E0DCD8;
+
+  /* STATUS COLORS */
+  --color-success: #00A972;
+  --color-error: #EF4444;
+  --color-info: #1B3139;
+  --color-warning: #FFAB00;
+  --color-destructive: #EF4444;
+
+  /* TAILWIND COMPATIBILITY */
+  --color-primary: var(--color-accent-primary);
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: var(--color-bg-secondary);
+  --color-secondary-foreground: var(--color-text-primary);
+  --color-foreground: var(--color-text-primary);
+  --color-background: var(--color-bg-primary);
+  --color-muted: var(--color-bg-tertiary);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-accent: var(--color-bg-secondary);
+  --color-accent-foreground: var(--color-text-primary);
+  --color-ring: var(--color-accent-primary);
+
+  /* LAYOUT */
+  --sidebar-width: 280px;
+  --header-height: 56px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* FONTS - Databricks Brand */
+  --font-body: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* Dark mode support */
+.dark {
+  --color-text-heading: #FAFAFA;
+  --color-text-primary: #E4E4E7;
+  --color-text-muted: #A1A1AA;
+
+  --color-accent-primary: #FF5F46;
+  --color-accent-secondary: #FF3621;
+
+  --color-bg-primary: #1B2026;
+  --color-bg-secondary: #141A1F;
+  --color-bg-tertiary: #1F272E;
+  --color-bg-elevated: #243038;
+
+  --color-border: #2E3A42;
+
+  --color-primary-foreground: #FFFFFF;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-text-heading);
+    font-family: var(--font-heading);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  opacity: 0.3;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  opacity: 0.5;
+}
+
+/* Compact prose for chat messages */
+.prose-xs {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.prose-xs h1,
+.prose-xs h2,
+.prose-xs h3,
+.prose-xs h4 {
+  margin-top: 0.75em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.prose-xs h1 { font-size: 1.25em; }
+.prose-xs h2 { font-size: 1.15em; }
+.prose-xs h3 { font-size: 1.05em; }
+.prose-xs h4 { font-size: 1em; }
+
+.prose-xs p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose-xs ul,
+.prose-xs ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.25em;
+}
+
+.prose-xs li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+.prose-xs code {
+  font-size: 0.9em;
+  padding: 0.15em 0.3em;
+  background: var(--color-bg-tertiary);
+  border-radius: 3px;
+}
+
+.prose-xs pre {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding: 0.75em;
+  font-size: 12px;
+  background: var(--color-bg-tertiary);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.prose-xs pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.prose-xs a {
+  color: var(--color-accent-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.prose-xs a:hover {
+  color: var(--color-accent-secondary);
+}

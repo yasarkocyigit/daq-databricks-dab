@@ -1,0 +1,13 @@
+# AI Dev Kit Integration Dependencies
+# Install from local ai-dev-kit repository
+
+# Core packages (from ai-dev-kit repo)
+-e ../../../databricks-tools-core
+-e ../../../databricks-mcp-server
+-e ../../  # databricks-builder-app
+
+# Claude Agent SDK
+claude-agent-sdk>=0.1.0
+
+# For loading environment variables
+python-dotenv>=1.0.0

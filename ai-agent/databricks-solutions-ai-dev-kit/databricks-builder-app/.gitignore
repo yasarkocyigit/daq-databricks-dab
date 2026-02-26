@@ -1,0 +1,36 @@
+# Skills (copied from databricks-skills on startup)
+skills/
+
+# Projects directory (local development)
+projects/
+
+# Packages (copied from sibling dirs during deployment)
+packages/
+
+# Conda environment (for Databricks Apps deployment)
+conda-env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# Environment
+.env
+.env.local
+builder_app.db
+
+# Node (client)
+client/node_modules/
+client/out/
+client/dist/
+client/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

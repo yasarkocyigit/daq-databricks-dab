@@ -11,3 +11,7 @@ __pycache__/
 *.pem
 *.key
 *.p12
+
+# Local AI assistant runtime files
+.claude/
+CLAUDE.md

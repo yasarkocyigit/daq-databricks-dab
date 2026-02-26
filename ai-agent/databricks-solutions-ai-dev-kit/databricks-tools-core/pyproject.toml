@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "databricks-tools-core"
+version = "0.1.0"
+description = "High-level, AI-assistant-friendly functions for building Databricks projects"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE.md"}
+authors = [
+    {name = "Databricks"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "pydantic>=2.0.0",
+    "databricks-sdk>=0.81.0",
+    "pyyaml>=6.0",
+    "sqlglot>=20.0.0",
+    "sqlfluff>=3.0.0",
+    "litellm>=1.0.0",
+    "pymupdf>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-timeout>=2.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (require Databricks connection)",
+    "slow: marks tests as slow",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["databricks_tools_core*"]
