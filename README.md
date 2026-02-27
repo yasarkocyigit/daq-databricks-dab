@@ -37,6 +37,7 @@ Key design goals:
 ## Architecture
 <img width="1497" height="805" alt="databricks sdp " src="https://github.com/user-attachments/assets/26cb45bf-a8a0-459d-9470-92f769a95d37" />
 
+<img width="1512" height="858" alt="ai-dab-mdd" src="https://github.com/user-attachments/assets/24616f33-a52e-4003-a6f8-63fb519c4c34" />
 
 ```mermaid
 flowchart TD
